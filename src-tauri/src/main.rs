@@ -3,6 +3,7 @@
 mod benchmark;
 mod diagnostics;
 mod hotkeys_runtime;
+mod lua_scripts;
 mod macros;
 mod profiles;
 mod recoil;
@@ -20,6 +21,10 @@ use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
 use hotkeys_runtime::HotkeyRuntime;
+use lua_scripts::{
+    LuaScriptState, delete_lua_script, duplicate_lua_script, lua_scripts_snapshot,
+    rename_lua_script, save_lua_script,
+};
 use macros::{
     MacroState, delete_macro, macros_snapshot, play_macro, run_lua_script, save_macro,
     start_macro_recording, stop_macro, stop_macro_recording, validate_lua_script,
@@ -360,6 +365,12 @@ fn main() {
             })?;
             app.manage(macros);
 
+            let lua_scripts = LuaScriptState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "lua-scripts", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(lua_scripts);
+
             let remaps = RemapState::load(app.handle()).map_err(|error| {
                 diagnostics.log(LogLevel::Error, "remap", &error);
                 std::io::Error::other(error)
@@ -405,6 +416,11 @@ fn main() {
             stop_macro_recording,
             validate_lua_script,
             run_lua_script,
+            lua_scripts_snapshot,
+            save_lua_script,
+            rename_lua_script,
+            duplicate_lua_script,
+            delete_lua_script,
             remaps_snapshot,
             save_remap,
             delete_remap,
