@@ -10,14 +10,25 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
       - uses: dtolnay/rust-toolchain@stable
         with:
           components: rustfmt, clippy
-      - name: Format workspace
-        run: cargo fmt --all
-      - name: Check
+      - name: Install frontend dependencies
+        run: npm install
+      - name: Build frontend
+        run: npm run build
+      - name: Format core
+        run: cargo fmt --all -- --check
+      - name: Format Tauri
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Check core
         run: cargo check --all-targets
-      - name: Test
+      - name: Test core
         run: cargo test --all-targets
-      - name: Clippy
+      - name: Clippy core
         run: cargo clippy --all-targets -- -D warnings
+      - name: Check Tauri
+        run: cargo check --manifest-path src-tauri/Cargo.toml
