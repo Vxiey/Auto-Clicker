@@ -271,10 +271,18 @@ fn trim_record_stop_hotkey(events: &mut Vec<MacroEventRecord>) {
         event.event_type == "key-down" && event.label.eq_ignore_ascii_case("F2")
     }) {
         events.pop();
-        if events.last().is_some_and(|event| event.event_type == "delay") {
+        if events
+            .last()
+            .is_some_and(|event| event.event_type == "delay")
+        {
             events.pop();
         }
     }
+}
+
+fn recorder_reserved(binding: &HotkeyBinding) -> bool {
+    binding.canonical().eq_ignore_ascii_case("F1")
+        || binding.canonical().eq_ignore_ascii_case("F2")
 }
 
 fn start_profile_clicker(
@@ -315,6 +323,7 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
     let runtime_remaps = app
         .state::<RemapState>()
         .runtime_bindings(snapshot.foreground_process.as_deref())?;
+    let diagnostics = app.state::<DiagnosticsState>();
 
     let mut bindings = vec![
         RegisteredHotkey {
@@ -325,36 +334,57 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
             id: MACRO_RECORD_STOP_ID,
             binding: HotkeyBinding::parse("F2")?.with_consume(false),
         },
-        RegisteredHotkey {
-            id: CLICKER_HOTKEY_ID,
-            binding: HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true),
-        },
-        RegisteredHotkey {
-            id: EMERGENCY_STOP_ID,
-            binding: HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?
-                .with_consume(true),
-        },
     ];
 
-    let mut macro_by_hotkey = HashMap::new();
-    for (index, macro_def) in macros
-        .iter()
-        .filter(|item| {
-            let trigger = item.trigger.trim();
-            !trigger.is_empty() && !trigger.eq_ignore_ascii_case(UNASSIGNED_MACRO_TRIGGER)
-        })
-        .enumerate()
-    {
-        let id = MACRO_HOTKEY_BASE + index as u64;
+    let clicker_binding =
+        HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true);
+    if recorder_reserved(&clicker_binding) {
+        diagnostics.log(
+            LogLevel::Warn,
+            "hotkeys",
+            "clicker start hotkey F1/F2 ignored because those keys are reserved for macro recording",
+        );
+    } else {
         bindings.push(RegisteredHotkey {
-            id,
-            binding: HotkeyBinding::parse(&macro_def.trigger)?.with_consume(false),
+            id: CLICKER_HOTKEY_ID,
+            binding: clicker_binding,
         });
+    }
+
+    let emergency_binding =
+        HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?.with_consume(true);
+    if recorder_reserved(&emergency_binding) {
+        diagnostics.log(
+            LogLevel::Warn,
+            "hotkeys",
+            "emergency stop hotkey F1/F2 ignored because those keys are reserved for macro recording",
+        );
+    } else {
+        bindings.push(RegisteredHotkey {
+            id: EMERGENCY_STOP_ID,
+            binding: emergency_binding,
+        });
+    }
+
+    let mut macro_by_hotkey = HashMap::new();
+    for macro_def in macros.iter().filter(|item| {
+        let trigger = item.trigger.trim();
+        !trigger.is_empty() && !trigger.eq_ignore_ascii_case(UNASSIGNED_MACRO_TRIGGER)
+    }) {
+        let binding = HotkeyBinding::parse(&macro_def.trigger)?.with_consume(false);
+        if recorder_reserved(&binding) {
+            continue;
+        }
+        let id = MACRO_HOTKEY_BASE + macro_by_hotkey.len() as u64;
+        bindings.push(RegisteredHotkey { id, binding });
         macro_by_hotkey.insert(id, macro_def.id.clone());
     }
 
     let mut remap_by_hotkey = HashMap::new();
     for remap in runtime_remaps {
+        if recorder_reserved(&remap.hotkey.binding) {
+            continue;
+        }
         remap_by_hotkey.insert(remap.hotkey.id, remap.mapping_id);
         bindings.push(remap.hotkey);
     }
@@ -395,7 +425,7 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         *current_button = button;
     }
 
-    app.state::<DiagnosticsState>().log(
+    diagnostics.log(
         LogLevel::Info,
         "hotkeys",
         &format!(
