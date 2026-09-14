@@ -55,6 +55,17 @@ export type MacroSnapshot = {
   playing_macro_id: string | null;
 };
 
+export type StoredLuaScript = {
+  id: string;
+  name: string;
+  script: string;
+};
+
+export type LuaScriptDocument = {
+  schema_version: number;
+  scripts: StoredLuaScript[];
+};
+
 export type StoredRemap = {
   id: string;
   name: string;
@@ -78,6 +89,7 @@ export type RecoilStep = {
 export type RecoilPreset = {
   id: string;
   name: string;
+  character_name: string;
   weapon_name: string;
   slot: 1 | 2;
   enabled: boolean;
@@ -198,6 +210,13 @@ export const macroApi = {
   stopRecording: () => invoke<MacroEventRecord[]>("stop_macro_recording"),
   validateLua: (script: string) => invoke<number>("validate_lua_script", { script }),
   runLua: (script: string, speed = 1) => invoke<void>("run_lua_script", { script, speed }),
+  luaScripts: () => invoke<LuaScriptDocument>("lua_scripts_snapshot"),
+  saveLuaScript: (scriptDef: StoredLuaScript) =>
+    invoke<StoredLuaScript>("save_lua_script", { scriptDef }),
+  renameLuaScript: (id: string, name: string) =>
+    invoke<StoredLuaScript>("rename_lua_script", { id, name }),
+  duplicateLuaScript: (id: string) => invoke<StoredLuaScript>("duplicate_lua_script", { id }),
+  deleteLuaScript: (id: string) => invoke<void>("delete_lua_script", { id }),
 };
 
 export const remapApi = {
