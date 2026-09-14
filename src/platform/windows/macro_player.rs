@@ -133,11 +133,7 @@ impl MacroPlayer {
     }
 }
 
-fn release_held(
-    input: &WindowsInput,
-    keys: &mut HashSet<u16>,
-    buttons: &mut HashSet<MouseButton>,
-) {
+fn release_held(input: &WindowsInput, keys: &mut HashSet<u16>, buttons: &mut HashSet<MouseButton>) {
     for key in keys.drain() {
         let _ = input.key_up(key);
     }
@@ -162,7 +158,9 @@ mod tests {
     fn empty_macro_is_valid() {
         let player = MacroPlayer::new().expect("QPC should be available on Windows");
         let stop = std::sync::atomic::AtomicBool::new(false);
-        let stats = player.play(&[], &stop, 1.0).expect("empty macro should play");
+        let stats = player
+            .play(&[], &stop, 1.0)
+            .expect("empty macro should play");
         assert_eq!(stats.actions_executed, 0);
     }
 }
