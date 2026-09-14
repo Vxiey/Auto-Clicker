@@ -342,9 +342,7 @@ fn validate_installer_name(name: &str) -> Result<(), String> {
         return Err("installer name contains a path separator".into());
     }
     let lower = name.to_ascii_lowercase();
-    if !lower.starts_with("vxclick")
-        || !(lower.ends_with("setup.exe") || lower.ends_with(".msi"))
-    {
+    if !lower.starts_with("vxclick") || !(lower.ends_with("setup.exe") || lower.ends_with(".msi")) {
         return Err("automatic updates require an official VxClick setup EXE or MSI".into());
     }
     Ok(())
@@ -370,7 +368,12 @@ fn validate_sha256(value: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn verify_download(bytes: &[u8], expected_size: u64, expected_hash: &str, label: &str) -> Result<(), String> {
+fn verify_download(
+    bytes: &[u8],
+    expected_size: u64,
+    expected_hash: &str,
+    label: &str,
+) -> Result<(), String> {
     if expected_size != 0 && bytes.len() as u64 != expected_size {
         return Err(format!(
             "{label} size mismatch: expected {expected_size} bytes, downloaded {} bytes",
@@ -475,10 +478,7 @@ mod tests {
     #[test]
     fn parses_github_sha256_digest() {
         let hash = "b".repeat(64);
-        assert_eq!(
-            parse_github_sha256(&format!("sha256:{hash}")),
-            Some(hash)
-        );
+        assert_eq!(parse_github_sha256(&format!("sha256:{hash}")), Some(hash));
         assert!(parse_github_sha256("sha512:abcd").is_none());
     }
 }
