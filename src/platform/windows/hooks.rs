@@ -55,8 +55,13 @@ pub enum CapturedInputKind {
     },
     MouseDown(MouseButton),
     MouseUp(MouseButton),
-    MouseMove { x: i32, y: i32 },
-    MouseWheel { delta: i16 },
+    MouseMove {
+        x: i32,
+        y: i32,
+    },
+    MouseWheel {
+        delta: i16,
+    },
 }
 
 pub struct GlobalInputRecorder {
