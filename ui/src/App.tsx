@@ -31,6 +31,16 @@ import { APP_VERSION } from "./version";
 
 type Page = "dashboard" | "clicker" | "recoil" | "macros" | "remap" | "profiles" | "settings";
 type EngineStatus = { running: boolean; clicks: number; actual_cps: number; target_cps: number };
+type IntervalUnit = "ms" | "seconds" | "minutes" | "hours";
+
+const MIN_CLICKER_CPS = 1 / 604_800;
+const MAX_CLICKER_CPS = 20_000;
+const INTERVAL_UNIT_US: Record<IntervalUnit, number> = {
+  ms: 1_000,
+  seconds: 1_000_000,
+  minutes: 60_000_000,
+  hours: 3_600_000_000,
+};
 
 const nav = [
   ["dashboard", "Dashboard", LayoutDashboard],
@@ -61,7 +71,7 @@ export default function App() {
   const [diagnostics, setDiagnostics] = useState(true);
   const [activeProfile, setActiveProfile] = useState("Default");
 
-  const intervalUs = useMemo(() => 1_000_000 / Math.max(cps, 0.001), [cps]);
+  const intervalUs = useMemo(() => 1_000_000 / Math.max(cps, MIN_CLICKER_CPS), [cps]);
 
   useEffect(() => {
     let cancelled = false;
@@ -185,14 +195,22 @@ function Dashboard({ status, cps, activeProfile, onStart, onStop, open }: { stat
 }
 
 function AutoClicker(props: { status: EngineStatus; cps: number; setCps: (value: number) => void; intervalUs: number; button: string; setButton: (value: string) => void; mode: string; setMode: (value: string) => void; randomize: boolean; setRandomize: (value: boolean) => void; burst: boolean; setBurst: (value: boolean) => void; positionMode: string; setPositionMode: (value: string) => void; positions: string; setPositions: (value: string) => void; startHotkey: string; setStartHotkey: (value: string) => void; stopHotkey: string; setStopHotkey: (value: string) => void; onStart: () => void; onStop: () => void }) {
+  const [intervalUnit, setIntervalUnit] = useState<IntervalUnit>("ms");
+  const intervalValue = props.intervalUs / INTERVAL_UNIT_US[intervalUnit];
+  const setInterval = (value: number) => {
+    if (!Number.isFinite(value) || value <= 0) return;
+    const nextCps = 1_000_000 / (value * INTERVAL_UNIT_US[intervalUnit]);
+    props.setCps(Math.max(MIN_CLICKER_CPS, Math.min(MAX_CLICKER_CPS, nextCps)));
+  };
+
   return <div className="page">
     <PageHeader title="Auto Clicker" subtitle="Configure click behavior, precision, hotkeys and cursor targeting." right={<StatusPill status={props.status.running ? "Running" : "Stopped"} />} />
     <div className="grid grid-2">
-      <Card><h2 className="card-title">Click settings</h2><div className="card-copy">Core click behavior.</div><div className="form-row section-gap"><Field label="Click type"><select className="select" value={props.button} onChange={(event) => props.setButton(event.target.value)}><option value="left">Left</option><option value="right">Right</option><option value="middle">Middle</option><option value="x1">X1 / Mouse 4</option><option value="x2">X2 / Mouse 5</option></select></Field><Field label="Mode"><select className="select" value={props.mode} onChange={(event) => props.setMode(event.target.value)}><option value="hold">Hold</option><option value="toggle">Toggle</option><option value="once">Once</option></select></Field></div><div className="section-gap"><Field label={`CPS · ${props.cps.toFixed(1)}`}><input className="range" type="range" min="1" max="20000" step="1" value={props.cps} onChange={(event) => props.setCps(Number(event.target.value))} /></Field></div><div className="form-row section-gap"><Field label="Exact CPS"><input className="input" type="number" min="1" max="20000" value={props.cps} onChange={(event) => props.setCps(Math.max(1, Math.min(20000, Number(event.target.value))))} /></Field><Field label="Interval"><input className="input" readOnly value={`${props.intervalUs.toFixed(3)} µs`} /></Field></div></Card>
+      <Card><h2 className="card-title">Click settings</h2><div className="card-copy">Use CPS or set an exact interval in milliseconds, seconds, minutes or hours.</div><div className="form-row section-gap"><Field label="Click type"><select className="select" value={props.button} onChange={(event) => props.setButton(event.target.value)}><option value="left">Left</option><option value="right">Right</option><option value="middle">Middle</option><option value="x1">X1 / Mouse 4</option><option value="x2">X2 / Mouse 5</option></select></Field><Field label="Mode"><select className="select" value={props.mode} onChange={(event) => props.setMode(event.target.value)}><option value="hold">Hold</option><option value="toggle">Toggle</option><option value="once">Once</option></select></Field></div><div className="section-gap"><Field label={`CPS · ${props.cps < 1 ? props.cps.toFixed(6) : props.cps.toFixed(1)}`}><input className="range" type="range" min="1" max="20000" step="1" value={Math.max(1, props.cps)} onChange={(event) => props.setCps(Number(event.target.value))} /></Field><div className="card-copy">CPS slider covers 1–20,000. Use Interval for slower click rates.</div></div><div className="form-row section-gap"><Field label="Exact CPS"><input className="input" type="number" min={MIN_CLICKER_CPS} max={MAX_CLICKER_CPS} step="any" value={props.cps} onChange={(event) => { const value = Number(event.target.value); if (Number.isFinite(value) && value > 0) props.setCps(Math.max(MIN_CLICKER_CPS, Math.min(MAX_CLICKER_CPS, value))); }} /></Field><Field label="Interval"><div className="inline" style={{ gap: 8, width: "100%" }}><input className="input" style={{ flex: 1 }} type="number" min="0.000001" step="any" value={Number(intervalValue.toPrecision(10))} onChange={(event) => setInterval(Number(event.target.value))} /><select className="select" style={{ width: 118 }} value={intervalUnit} onChange={(event) => setIntervalUnit(event.target.value as IntervalUnit)}><option value="ms">ms</option><option value="seconds">seconds</option><option value="minutes">minutes</option><option value="hours">hours</option></select></div></Field></div></Card>
       <Card><h2 className="card-title">Advanced timing</h2><div className="card-copy">These controls now run in the native Rust click scheduler.</div><SettingRow title="Randomization" copy="±5% allocation-free interval variation around the selected CPS." value={props.randomize} onChange={props.setRandomize} /><SettingRow title="Burst mode" copy="Batch four clicks per SendInput call while preserving average target CPS." value={props.burst} onChange={props.setBurst} /><div className="divider" /><div className="card-copy">Precision mode remains enabled for normal click scheduling.</div></Card>
     </div>
     <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Position mode</h2><div className="form-row section-gap"><Field label="Target"><select className="select" value={props.positionMode} onChange={(event) => props.setPositionMode(event.target.value)}><option value="cursor">Current cursor</option><option value="fixed">Fixed position</option><option value="multi">Multi-point</option></select></Field><Field label="Coordinates"><input className="input" value={props.positions} onChange={(event) => props.setPositions(event.target.value)} placeholder={props.positionMode === "multi" ? "100,200; 300,400" : "100, 200"} disabled={props.positionMode === "cursor"} /></Field></div><div className="card-copy">Multi-point mode cycles the configured coordinates without allocating in the hot loop.</div></Card><Card><h2 className="card-title">Hotkeys</h2><div className="form-row section-gap"><Field label="Start / Stop"><input className="input" value={props.startHotkey} onChange={(event) => props.setStartHotkey(event.target.value)} /></Field><Field label="Emergency stop"><input className="input" value={props.stopHotkey} onChange={(event) => props.setStopHotkey(event.target.value)} /></Field></div></Card></div>
-    <Card className="section-gap"><div className="inline" style={{ justifyContent: "space-between", width: "100%" }}><div><h2 className="card-title">Live status</h2><div className="card-copy">Target {props.cps.toFixed(1)} CPS · actual {props.status.actual_cps.toFixed(1)} CPS · {props.status.clicks.toLocaleString()} clicks</div></div><div className="quick-actions" style={{ marginTop: 0 }}><Button variant="primary" disabled={props.status.running} onClick={props.onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!props.status.running} onClick={props.onStop}><CircleStop size={14} /> Stop</Button></div></div></Card>
+    <Card className="section-gap"><div className="inline" style={{ justifyContent: "space-between", width: "100%" }}><div><h2 className="card-title">Live status</h2><div className="card-copy">Target {props.cps < 1 ? props.cps.toFixed(6) : props.cps.toFixed(1)} CPS · actual {props.status.actual_cps.toFixed(1)} CPS · {props.status.clicks.toLocaleString()} clicks</div></div><div className="quick-actions" style={{ marginTop: 0 }}><Button variant="primary" disabled={props.status.running} onClick={props.onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!props.status.running} onClick={props.onStop}><CircleStop size={14} /> Stop</Button></div></div></Card>
   </div>;
 }
 
