@@ -30,8 +30,6 @@ struct ActiveProfileConfig {
     cps: f64,
     button: MouseButton,
     mode: ActiveMode,
-    start_hotkey: String,
-    emergency_hotkey: String,
 }
 
 pub struct HotkeyRuntime {
@@ -220,8 +218,6 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         cps: profile.clicker.cps,
         button,
         mode,
-        start_hotkey: profile.clicker.start_hotkey.clone(),
-        emergency_hotkey: profile.clicker.emergency_stop_hotkey.clone(),
     });
     Ok(())
 }
