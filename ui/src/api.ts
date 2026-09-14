@@ -244,10 +244,10 @@ export const recoilApi = {
   setSlot: (slot: 1 | 2) => invoke<void>("set_recoil_slot", { slot }),
   savePreset: (gameId: string, preset: RecoilPreset) =>
     invoke<RecoilPreset>("save_recoil_preset", { gameId, preset }),
-  acceptRisk: () =>
+  acceptRisk: (confirmedAccountRisk: boolean, confirmedThirdPartyRules: boolean) =>
     invoke<void>("recoil_start", {
-      confirmedAccountRisk: true,
-      confirmedThirdPartyRules: true,
+      confirmedAccountRisk,
+      confirmedThirdPartyRules,
       acceptOnly: true,
     }),
   start: () =>
