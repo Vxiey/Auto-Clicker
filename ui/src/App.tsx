@@ -5,6 +5,7 @@ import {
   Activity,
   Bolt,
   CircleStop,
+  Crosshair,
   Gauge,
   Keyboard,
   LayoutDashboard,
@@ -22,17 +23,19 @@ import type { Profile } from "./api";
 import { BenchmarkPanel } from "./BenchmarkPanel";
 import { MacroStudio } from "./MacroStudio";
 import { ProfilesPanel } from "./ProfilesPanel";
+import { RecoilScripts } from "./RecoilScripts";
 import { RemapPanel } from "./RemapPanel";
 import { UpdatePanel } from "./UpdatePanel";
 import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./components";
 import { APP_VERSION } from "./version";
 
-type Page = "dashboard" | "clicker" | "macros" | "remap" | "profiles" | "settings";
+type Page = "dashboard" | "clicker" | "recoil" | "macros" | "remap" | "profiles" | "settings";
 type EngineStatus = { running: boolean; clicks: number; actual_cps: number; target_cps: number };
 
 const nav = [
   ["dashboard", "Dashboard", LayoutDashboard],
   ["clicker", "Auto Clicker", MousePointer2],
+  ["recoil", "Recoil Scripts", Crosshair],
   ["macros", "Macros", Sparkles],
   ["remap", "Key Remap", Keyboard],
   ["profiles", "Profiles", UserRoundCog],
@@ -149,6 +152,7 @@ export default function App() {
         <div className="content">
           {page === "dashboard" && <Dashboard status={status} cps={cps} activeProfile={activeProfile} onStart={start} onStop={stop} open={setPage} />}
           {page === "clicker" && <AutoClicker status={status} cps={cps} setCps={setCps} intervalUs={intervalUs} button={button} setButton={setButton} mode={mode} setMode={setMode} randomize={randomize} setRandomize={setRandomize} burst={burst} setBurst={setBurst} positionMode={positionMode} setPositionMode={setPositionMode} positions={positions} setPositions={setPositions} startHotkey={startHotkey} setStartHotkey={setStartHotkey} stopHotkey={stopHotkey} setStopHotkey={setStopHotkey} onStart={start} onStop={stop} />}
+          {page === "recoil" && <RecoilScripts />}
           {page === "macros" && <MacroStudio />}
           {page === "remap" && <RemapPanel />}
           {page === "profiles" && <ProfilesPanel onActiveProfile={applyProfile} />}
@@ -173,7 +177,7 @@ function Dashboard({ status, cps, activeProfile, onStart, onStop, open }: { stat
       <MetricCard label="Active profile" value={activeProfile} icon={<UserRoundCog size={16} color="var(--muted)" />} />
     </div>
     <div className="grid grid-2 section-gap">
-      <Card><h2 className="card-title">Quick controls</h2><div className="card-copy">Target {cps.toLocaleString()} CPS using the Rust precision engine.</div><div className="quick-actions"><Button variant="primary" disabled={status.running} onClick={onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!status.running} onClick={onStop}><Square size={13} /> Stop</Button><Button onClick={() => open("macros")}><Sparkles size={14} /> Macro Studio</Button><Button onClick={() => open("profiles")}><UserRoundCog size={14} /> Profiles</Button></div></Card>
+      <Card><h2 className="card-title">Quick controls</h2><div className="card-copy">Target {cps.toLocaleString()} CPS using the Rust precision engine.</div><div className="quick-actions"><Button variant="primary" disabled={status.running} onClick={onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!status.running} onClick={onStop}><Square size={13} /> Stop</Button><Button onClick={() => open("recoil")}><Crosshair size={14} /> Recoil Scripts</Button><Button onClick={() => open("macros")}><Sparkles size={14} /> Macro Studio</Button><Button onClick={() => open("profiles")}><UserRoundCog size={14} /> Profiles</Button></div></Card>
       <Card><h2 className="card-title">Precision engine</h2><div className="card-copy">Absolute deadlines, native SendInput and sub-millisecond scheduling targets.</div><div className="quick-actions"><span className="profile-chip"><Bolt size={13} /> High performance</span><span className="profile-chip"><Sparkles size={13} /> Sub-ms ready</span></div></Card>
     </div>
     <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Activity</h2><div className="card-copy">Live engine status and timing diagnostics are available from Settings.</div><div className="divider" /><div className="inline" style={{ justifyContent: "space-between" }}><span className="card-copy">Click engine</span><span className={`status-pill ${status.running ? "status-running" : "status-ready"}`}>{status.running ? "Running" : "Ready"}</span></div></Card><TrayPreview running={status.running} activeProfile={activeProfile} /></div>
