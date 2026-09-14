@@ -123,11 +123,7 @@ impl HotkeyRuntime {
                             _ => {}
                         },
                         EMERGENCY_STOP_ID if event.phase == HotkeyPhase::Pressed => {
-                            diagnostics.log(
-                                LogLevel::Warn,
-                                "hotkeys",
-                                "emergency stop triggered",
-                            );
+                            diagnostics.log(LogLevel::Warn, "hotkeys", "emergency stop triggered");
                             stop_clicker_inner(&engine, &diagnostics);
                             if let Err(error) = WindowsInput.release_all() {
                                 diagnostics.log(
@@ -183,7 +179,10 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         profile.clicker.mode
     );
 
-    if active.as_ref().is_some_and(|current| current.signature == signature) {
+    if active
+        .as_ref()
+        .is_some_and(|current| current.signature == signature)
+    {
         return Ok(());
     }
 
