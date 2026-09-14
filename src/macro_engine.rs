@@ -21,6 +21,7 @@ pub enum InputAction {
     MouseDown(MouseButton),
     MouseUp(MouseButton),
     MouseMoveAbsolute { x: i32, y: i32 },
+    MouseMoveRelative { dx: i32, dy: i32 },
     MouseWheel { delta: i32 },
     WaitMicros(u64),
 }
