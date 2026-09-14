@@ -1,7 +1,9 @@
 mod benchmark;
 mod diagnostics;
 mod hotkeys_runtime;
+mod macros;
 mod profiles;
+mod remaps;
 mod updater;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
@@ -15,10 +17,15 @@ use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
 use hotkeys_runtime::HotkeyRuntime;
+use macros::{
+    MacroState, delete_macro, macros_snapshot, play_macro, run_lua_script, save_macro,
+    start_macro_recording, stop_macro, stop_macro_recording, validate_lua_script,
+};
 use profiles::{
     ProfileState, activate_profile, create_profile, delete_profile, foreground_process,
     profiles_snapshot, save_profile, set_profile_auto_switch,
 };
+use remaps::{RemapState, delete_remap, remaps_snapshot, save_remap};
 use serde::Serialize;
 use tauri::{Manager, State};
 use updater::{check_for_updates, stage_patch};
@@ -53,6 +60,13 @@ impl Default for EngineState {
             }),
         }
     }
+}
+
+#[derive(Debug, Clone, Default)]
+pub(crate) struct ClickerRuntimeOptions {
+    randomize_percent: f64,
+    burst_size: u32,
+    positions: Vec<(i32, i32)>,
 }
 
 #[derive(Serialize)]
@@ -95,9 +109,33 @@ pub(crate) fn start_clicker_inner(
     state: &EngineState,
     diagnostics: &DiagnosticsState,
 ) -> Result<(), String> {
+    start_clicker_with_options_inner(
+        cps,
+        button,
+        ClickerRuntimeOptions::default(),
+        state,
+        diagnostics,
+    )
+}
+
+pub(crate) fn start_clicker_with_options_inner(
+    cps: f64,
+    button: MouseButton,
+    options: ClickerRuntimeOptions,
+    state: &EngineState,
+    diagnostics: &DiagnosticsState,
+) -> Result<(), String> {
     if !cps.is_finite() || !(1.0..=20_000.0).contains(&cps) {
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
         return Err("CPS must be between 1 and 20,000".into());
+    }
+    if !options.randomize_percent.is_finite()
+        || !(0.0..=50.0).contains(&options.randomize_percent)
+    {
+        return Err("randomization must be between 0 and 50 percent".into());
+    }
+    if !(1..=16).contains(&options.burst_size) {
+        return Err("burst size must be between 1 and 16 clicks".into());
     }
 
     if state.running.swap(true, Ordering::AcqRel) {
@@ -125,7 +163,12 @@ pub(crate) fn start_clicker_inner(
     diagnostics.log(
         LogLevel::Info,
         "clicker",
-        &format!("starting target_cps={cps:.3} button={button:?}"),
+        &format!(
+            "starting target_cps={cps:.3} button={button:?} randomize={:.1}% burst={} positions={}",
+            options.randomize_percent,
+            options.burst_size,
+            options.positions.len()
+        ),
     );
 
     let running = Arc::clone(&state.running);
@@ -142,6 +185,9 @@ pub(crate) fn start_clicker_inner(
             let config = LiveClickerConfig {
                 cps,
                 button,
+                randomize_percent: options.randomize_percent,
+                burst_size: options.burst_size,
+                positions: options.positions,
                 ..LiveClickerConfig::default()
             };
             let result = PrecisionClicker::new()
@@ -200,6 +246,10 @@ pub(crate) fn stop_clicker_inner(state: &EngineState, diagnostics: &DiagnosticsS
 fn start_clicker(
     cps: f64,
     button: String,
+    randomize: bool,
+    burst: bool,
+    position_mode: String,
+    positions: String,
     state: State<'_, EngineState>,
     diagnostics: State<'_, DiagnosticsState>,
 ) -> Result<(), String> {
@@ -207,12 +257,62 @@ fn start_clicker(
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid mouse button");
         "button must be left, right, middle, x1, or x2".to_string()
     })?;
-    start_clicker_inner(cps, button, &state, &diagnostics)
+    let positions = parse_positions(&position_mode, &positions)?;
+    let options = ClickerRuntimeOptions {
+        randomize_percent: if randomize { 5.0 } else { 0.0 },
+        burst_size: if burst { 4 } else { 1 },
+        positions,
+    };
+    start_clicker_with_options_inner(cps, button, options, &state, &diagnostics)
 }
 
 #[tauri::command]
 fn stop_clicker(state: State<'_, EngineState>, diagnostics: State<'_, DiagnosticsState>) {
     stop_clicker_inner(&state, &diagnostics);
+}
+
+fn parse_positions(mode: &str, value: &str) -> Result<Vec<(i32, i32)>, String> {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "cursor" | "" => Ok(Vec::new()),
+        "fixed" => {
+            let point = parse_point(value)?;
+            Ok(vec![point])
+        }
+        "multi" => {
+            let points = value
+                .split(';')
+                .map(str::trim)
+                .filter(|part| !part.is_empty())
+                .map(parse_point)
+                .collect::<Result<Vec<_>, _>>()?;
+            if points.is_empty() {
+                return Err("multi-point mode needs at least one X,Y coordinate".into());
+            }
+            if points.len() > 256 {
+                return Err("multi-point mode supports at most 256 coordinates".into());
+            }
+            Ok(points)
+        }
+        _ => Err("position mode must be cursor, fixed, or multi".into()),
+    }
+}
+
+fn parse_point(value: &str) -> Result<(i32, i32), String> {
+    let mut parts = value.split(',').map(str::trim);
+    let x = parts
+        .next()
+        .ok_or_else(|| "coordinate must be X,Y".to_string())?
+        .parse::<i32>()
+        .map_err(|_| "coordinate X is invalid".to_string())?;
+    let y = parts
+        .next()
+        .ok_or_else(|| "coordinate must be X,Y".to_string())?
+        .parse::<i32>()
+        .map_err(|_| "coordinate Y is invalid".to_string())?;
+    if parts.next().is_some() {
+        return Err("coordinate must contain exactly X,Y".into());
+    }
+    Ok((x, y))
 }
 
 fn main() {
@@ -238,6 +338,18 @@ fn main() {
             profiles.start_watcher(app.handle().clone());
             app.manage(profiles);
 
+            let macros = MacroState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "macros", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(macros);
+
+            let remaps = RemapState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "remap", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(remaps);
+
             let hotkeys = HotkeyRuntime::start(app.handle().clone()).map_err(|error| {
                 diagnostics.log(LogLevel::Error, "hotkeys", &error);
                 std::io::Error::other(error)
@@ -262,9 +374,36 @@ fn main() {
             delete_profile,
             set_profile_auto_switch,
             foreground_process,
+            macros_snapshot,
+            save_macro,
+            delete_macro,
+            play_macro,
+            stop_macro,
+            start_macro_recording,
+            stop_macro_recording,
+            validate_lua_script,
+            run_lua_script,
+            remaps_snapshot,
+            save_remap,
+            delete_remap,
             check_for_updates,
             stage_patch
         ])
         .run(tauri::generate_context!())
         .expect("error while running VxClick");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::parse_positions;
+
+    #[test]
+    fn parses_fixed_and_multi_positions() {
+        assert_eq!(parse_positions("fixed", "10, 20").unwrap(), vec![(10, 20)]);
+        assert_eq!(
+            parse_positions("multi", "10,20;30,40").unwrap(),
+            vec![(10, 20), (30, 40)]
+        );
+        assert!(parse_positions("fixed", "10").is_err());
+    }
 }
