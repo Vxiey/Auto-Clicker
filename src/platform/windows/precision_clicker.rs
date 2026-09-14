@@ -196,9 +196,7 @@ fn validate_rate(cps: f64) -> Result<(), String> {
 
 fn validate_live_config(config: &LiveClickerConfig) -> Result<(), String> {
     validate_rate(config.cps)?;
-    if !config.randomize_percent.is_finite()
-        || !(0.0..=50.0).contains(&config.randomize_percent)
-    {
+    if !config.randomize_percent.is_finite() || !(0.0..=50.0).contains(&config.randomize_percent) {
         return Err("randomization must be between 0 and 50 percent".into());
     }
     if !(1..=16).contains(&config.burst_size) {
