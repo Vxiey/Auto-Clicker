@@ -91,7 +91,10 @@ impl RecoilGameProfile {
             auto_switch: false,
             active_primary_id: "default-primary".into(),
             active_secondary_id: "default-secondary".into(),
-            presets: vec![RecoilPreset::default_primary(), RecoilPreset::default_secondary()],
+            presets: vec![
+                RecoilPreset::default_primary(),
+                RecoilPreset::default_secondary(),
+            ],
         }
     }
 }
@@ -443,9 +446,7 @@ fn activation_active(mode: &str) -> bool {
         match mode {
             "always" => true,
             "fire" => GetAsyncKeyState(VK_LBUTTON as i32) < 0,
-            _ => {
-                GetAsyncKeyState(VK_LBUTTON as i32) < 0 && GetAsyncKeyState(VK_RBUTTON as i32) < 0
-            }
+            _ => GetAsyncKeyState(VK_LBUTTON as i32) < 0 && GetAsyncKeyState(VK_RBUTTON as i32) < 0,
         }
     }
 }
@@ -464,7 +465,11 @@ fn migrate_and_validate(document: &mut RecoilDocument) -> Result<(), String> {
     for game in &document.games {
         validate_game(game)?;
     }
-    if !document.games.iter().any(|game| game.id == document.active_game_id) {
+    if !document
+        .games
+        .iter()
+        .any(|game| game.id == document.active_game_id)
+    {
         document.active_game_id = document.games[0].id.clone();
     }
     if !matches!(document.active_slot, 1 | 2) {
@@ -484,10 +489,18 @@ fn validate_game(game: &RecoilGameProfile) -> Result<(), String> {
     for preset in &game.presets {
         validate_preset(preset)?;
     }
-    if !game.presets.iter().any(|preset| preset.id == game.active_primary_id) {
+    if !game
+        .presets
+        .iter()
+        .any(|preset| preset.id == game.active_primary_id)
+    {
         return Err("active primary recoil preset is missing".into());
     }
-    if !game.presets.iter().any(|preset| preset.id == game.active_secondary_id) {
+    if !game
+        .presets
+        .iter()
+        .any(|preset| preset.id == game.active_secondary_id)
+    {
         return Err("active secondary recoil preset is missing".into());
     }
     Ok(())
@@ -511,11 +524,16 @@ fn validate_preset(preset: &RecoilPreset) -> Result<(), String> {
     if !preset.horizontal.is_finite() || !(0.0..=10.0).contains(&preset.horizontal) {
         return Err("horizontal multiplier must be between 0 and 10".into());
     }
-    if !matches!(preset.activation_mode.as_str(), "ads-fire" | "fire" | "always") {
+    if !matches!(
+        preset.activation_mode.as_str(),
+        "ads-fire" | "fire" | "always"
+    ) {
         return Err("activation mode must be ads-fire, fire, or always".into());
     }
     if preset.pattern.is_empty() || preset.pattern.len() > MAX_PATTERN_STEPS {
-        return Err(format!("recoil pattern must contain 1-{MAX_PATTERN_STEPS} steps"));
+        return Err(format!(
+            "recoil pattern must contain 1-{MAX_PATTERN_STEPS} steps"
+        ));
     }
     Ok(())
 }
@@ -531,7 +549,13 @@ fn clean_name(value: &str, field: &str) -> Result<String, String> {
 fn make_id(name: &str, prefix: &str) -> String {
     let slug: String = name
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|part| !part.is_empty())
@@ -541,7 +565,10 @@ fn make_id(name: &str, prefix: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    format!("{prefix}-{}-{millis}", if slug.is_empty() { "custom" } else { &slug })
+    format!(
+        "{prefix}-{}-{millis}",
+        if slug.is_empty() { "custom" } else { &slug }
+    )
 }
 
 fn normalize_process_name(value: &str) -> String {
