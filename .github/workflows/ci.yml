@@ -27,7 +27,9 @@ jobs:
       - name: Check core
         run: cargo check --all-targets
       - name: Test core
-        run: cargo test --all-targets
+        # Native hotkey tests intentionally share the single process-global Windows hook registry.
+        # Serialize them so independent tests cannot replace that registry while another test is asserting it.
+        run: cargo test --all-targets -- --test-threads=1
       - name: Clippy core
         run: cargo clippy --all-targets -- -D warnings
       - name: Check Tauri
