@@ -7,14 +7,14 @@ use std::thread::{self, JoinHandle};
 use windows_sys::Win32::System::Performance::QueryPerformanceCounter;
 use windows_sys::Win32::System::Threading::GetCurrentThreadId;
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    KBDLLHOOKSTRUCT, LLKHF_INJECTED, LLMHF_INJECTED, MSLLHOOKSTRUCT,
+    KBDLLHOOKSTRUCT, LLKHF_EXTENDED, LLKHF_INJECTED, LLMHF_INJECTED, MSLLHOOKSTRUCT,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
     CallNextHookEx, GetMessageW, MSG, PM_NOREMOVE, PeekMessageW, PostThreadMessageW,
-    SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN,
-    WM_KEYUP, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE,
-    WM_MOUSEWHEEL, WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP,
-    WM_XBUTTONDOWN, WM_XBUTTONUP,
+    SetWindowsHookExW, UnhookWindowsHookEx, WH_KEYBOARD_LL, WH_MOUSE_LL, WM_KEYDOWN, WM_KEYUP,
+    WM_LBUTTONDOWN, WM_LBUTTONUP, WM_MBUTTONDOWN, WM_MBUTTONUP, WM_MOUSEMOVE, WM_MOUSEWHEEL,
+    WM_QUIT, WM_RBUTTONDOWN, WM_RBUTTONUP, WM_SYSKEYDOWN, WM_SYSKEYUP, WM_XBUTTONDOWN,
+    WM_XBUTTONUP,
 };
 
 use crate::engine::MouseButton;
@@ -26,16 +26,33 @@ const XBUTTON2_DATA: u32 = 2;
 
 static EVENT_SENDER: OnceLock<Mutex<Option<SyncSender<CapturedInput>>>> = OnceLock::new();
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CapturedInputSource {
+    Physical,
+    /// Input injected by another application or device utility. VxClick keeps
+    /// this distinct from its own SendInput events so remaps can be accepted.
+    ExternalInjected,
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct CapturedInput {
     pub qpc_ticks: i64,
+    pub source: CapturedInputSource,
     pub kind: CapturedInputKind,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum CapturedInputKind {
-    KeyDown { virtual_key: u16, scan_code: u16 },
-    KeyUp { virtual_key: u16, scan_code: u16 },
+    KeyDown {
+        virtual_key: u16,
+        scan_code: u16,
+        extended: bool,
+    },
+    KeyUp {
+        virtual_key: u16,
+        scan_code: u16,
+        extended: bool,
+    },
     MouseDown(MouseButton),
     MouseUp(MouseButton),
     MouseMove { x: i32, y: i32 },
@@ -86,7 +103,9 @@ impl GlobalInputRecorder {
             Err(error) => {
                 let _ = thread.join();
                 clear_sender();
-                Err(format!("input recorder failed before initialization: {error}"))
+                Err(format!(
+                    "input recorder failed before initialization: {error}"
+                ))
             }
         }
     }
@@ -153,21 +172,28 @@ fn hook_thread(ready_tx: SyncSender<Result<u32, String>>) {
 unsafe extern "system" fn keyboard_hook(code: i32, wparam: usize, lparam: isize) -> isize {
     if code >= 0 {
         let data = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
-        let injected = (data.flags & LLKHF_INJECTED) != 0 || data.dwExtraInfo == INJECTED_INPUT_TAG;
-        if !injected {
+        if data.dwExtraInfo != INJECTED_INPUT_TAG {
+            let source = if (data.flags & LLKHF_INJECTED) != 0 {
+                CapturedInputSource::ExternalInjected
+            } else {
+                CapturedInputSource::Physical
+            };
+            let extended = (data.flags & LLKHF_EXTENDED) != 0;
             let kind = match wparam as u32 {
                 WM_KEYDOWN | WM_SYSKEYDOWN => Some(CapturedInputKind::KeyDown {
                     virtual_key: data.vkCode as u16,
                     scan_code: data.scanCode as u16,
+                    extended,
                 }),
                 WM_KEYUP | WM_SYSKEYUP => Some(CapturedInputKind::KeyUp {
                     virtual_key: data.vkCode as u16,
                     scan_code: data.scanCode as u16,
+                    extended,
                 }),
                 _ => None,
             };
             if let Some(kind) = kind {
-                publish(kind);
+                publish(source, kind);
             }
         }
     }
@@ -177,8 +203,12 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: usize, lparam: isize)
 unsafe extern "system" fn mouse_hook(code: i32, wparam: usize, lparam: isize) -> isize {
     if code >= 0 {
         let data = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
-        let injected = (data.flags & LLMHF_INJECTED) != 0 || data.dwExtraInfo == INJECTED_INPUT_TAG;
-        if !injected {
+        if data.dwExtraInfo != INJECTED_INPUT_TAG {
+            let source = if (data.flags & LLMHF_INJECTED) != 0 {
+                CapturedInputSource::ExternalInjected
+            } else {
+                CapturedInputSource::Physical
+            };
             let xbutton = (data.mouseData >> 16) & 0xffff;
             let kind = match wparam as u32 {
                 WM_MOUSEMOVE => Some(CapturedInputKind::MouseMove {
@@ -191,7 +221,9 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: usize, lparam: isize) ->
                 WM_RBUTTONUP => Some(CapturedInputKind::MouseUp(MouseButton::Right)),
                 WM_MBUTTONDOWN => Some(CapturedInputKind::MouseDown(MouseButton::Middle)),
                 WM_MBUTTONUP => Some(CapturedInputKind::MouseUp(MouseButton::Middle)),
-                WM_XBUTTONDOWN => mouse_button_from_xdata(xbutton).map(CapturedInputKind::MouseDown),
+                WM_XBUTTONDOWN => {
+                    mouse_button_from_xdata(xbutton).map(CapturedInputKind::MouseDown)
+                }
                 WM_XBUTTONUP => mouse_button_from_xdata(xbutton).map(CapturedInputKind::MouseUp),
                 WM_MOUSEWHEEL => Some(CapturedInputKind::MouseWheel {
                     delta: ((data.mouseData >> 16) & 0xffff) as u16 as i16,
@@ -199,7 +231,7 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: usize, lparam: isize) ->
                 _ => None,
             };
             if let Some(kind) = kind {
-                publish(kind);
+                publish(source, kind);
             }
         }
     }
@@ -214,7 +246,7 @@ fn mouse_button_from_xdata(value: u32) -> Option<MouseButton> {
     }
 }
 
-fn publish(kind: CapturedInputKind) {
+fn publish(source: CapturedInputSource, kind: CapturedInputKind) {
     let mut qpc_ticks = 0_i64;
     unsafe {
         QueryPerformanceCounter(&mut qpc_ticks);
@@ -230,7 +262,11 @@ fn publish(kind: CapturedInputKind) {
         return;
     };
 
-    match sender.try_send(CapturedInput { qpc_ticks, kind }) {
+    match sender.try_send(CapturedInput {
+        qpc_ticks,
+        source,
+        kind,
+    }) {
         Ok(()) | Err(TrySendError::Full(_)) | Err(TrySendError::Disconnected(_)) => {}
     }
 }
