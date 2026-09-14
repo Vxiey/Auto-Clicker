@@ -16,6 +16,10 @@
   <img alt="License" src="https://img.shields.io/badge/license-MIT-green" />
 </p>
 
+<p align="center">
+  <img src="assets/Vxclick.png" width="900" alt="VxClick application preview" />
+</p>
+
 VxClick is a clean-room Windows automation project focused on **stable timing, low input latency, low overhead and safe start/stop behavior**. The native core uses Windows APIs for high-resolution timing and input injection, while the desktop application uses Tauri + React for the UI.
 
 > **Release status:** v1.0.0 feature wiring is complete. The release path includes native profile-aware hotkeys, persistent Macro Studio recording/playback, runtime key/mouse remapping, sandboxed Lua automation, randomization/burst/position modes, diagnostics, updater support and Windows release bundles.
