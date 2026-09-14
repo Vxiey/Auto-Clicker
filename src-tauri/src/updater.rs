@@ -189,8 +189,7 @@ fn choose_windows_asset(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
     assets
         .iter()
         .filter(|asset| {
-            priority(&asset.name) < 99
-                && validate_patch_url(&asset.browser_download_url).is_ok()
+            priority(&asset.name) < 99 && validate_patch_url(&asset.browser_download_url).is_ok()
         })
         .min_by_key(|asset| priority(&asset.name))
         .map(|asset| FullReleaseAsset {
@@ -304,7 +303,12 @@ mod tests {
     #[test]
     fn rejects_non_official_update_urls() {
         assert!(validate_patch_url("https://example.com/VxClick.exe").is_err());
-        assert!(validate_patch_url("https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick.exe").is_ok());
+        assert!(
+            validate_patch_url(
+                "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick.exe"
+            )
+            .is_ok()
+        );
     }
 
     #[test]
