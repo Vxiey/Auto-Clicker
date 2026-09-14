@@ -1,3 +1,4 @@
+mod benchmark;
 mod diagnostics;
 mod hotkeys_runtime;
 mod profiles;
@@ -9,6 +10,7 @@ use std::time::Instant;
 
 use auto_clicker_core::engine::MouseButton;
 use auto_clicker_core::platform::windows::{LiveClickerConfig, PrecisionClicker};
+use benchmark::run_precision_benchmark;
 use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
@@ -249,6 +251,7 @@ fn main() {
             engine_status,
             start_clicker,
             stop_clicker,
+            run_precision_benchmark,
             diagnostics_snapshot,
             diagnostics_client_log,
             clear_diagnostics,
