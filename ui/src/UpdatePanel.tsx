@@ -11,8 +11,124 @@ import {
 } from "lucide-react";
 import { updaterApi, type UpdateInfo } from "./api";
 import { Button, Card } from "./components";
+import { APP_VERSION } from "./version";
 
 const CHANGELOG = [
+  {
+    version: "1.0.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "First VxClick 1.0 release candidate with unified Windows automation core and desktop UI.",
+          "Precision benchmark panel/API for measured CPS, interval percentiles, jitter and missed deadlines.",
+        ],
+      },
+      {
+        title: "CHANGED",
+        items: [
+          "Core, desktop bundle and frontend versions are synchronized at 1.0.0.",
+          "Release links and updater channel now target the renamed Vxiey/VxClick repository.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.9.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "CHANGED",
+        items: [
+          "Hardened GitHub updater to accept only official VxClick release assets and supported patch formats.",
+          "Small patches require valid source/target versions, SHA-256, size limits and official release URLs.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.8.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Native precision benchmark command returning actual CPS, deviation, interval p50/p95/p99, jitter and missed deadlines.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.7.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "FIXED",
+        items: [
+          "Synthetic held keys and mouse buttons are tracked and released on emergency stop or runtime shutdown.",
+          "Failed click injection makes a best-effort mouse-up to reduce stuck-button states.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.6.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Native hotkeys now follow the active game/application profile automatically.",
+          "Toggle, hold-to-click and single-click activation modes are handled outside the WebView.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.5.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Stateful remap rule engine with key, mouse and chord triggers, process scopes and consume/pass-through decisions.",
+        ],
+      },
+      {
+        title: "FIXED",
+        items: [
+          "Chord mappings fire on the activation edge instead of repeating on every keyboard repeat event.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.4.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "QPC-based macro playback with absolute deadlines, 0.1x–10x speed scaling and cancellation support.",
+          "Macro playback releases locally held keys/buttons after completion, cancellation or failure.",
+        ],
+      },
+    ],
+  },
+  {
+    version: "0.3.0",
+    date: "14.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Native global clicker hotkey runtime that works while VxClick is unfocused or minimized.",
+          "Emergency stop is processed in the Windows hook path rather than relying on browser focus.",
+        ],
+      },
+    ],
+  },
   {
     version: "0.2.0",
     date: "14.09.2026",
@@ -20,32 +136,18 @@ const CHANGELOG = [
       {
         title: "NEW",
         items: [
-          "New dark blue/cyan Tauri + React desktop UI with Dashboard, Auto Clicker, Macro Studio, Key Remap, Profiles and Settings.",
-          "Native Windows low-level keyboard and mouse hooks for global recording and advanced hotkeys.",
+          "Dark blue/cyan Tauri + React UI with Dashboard, Auto Clicker, Macro Studio, Key Remap, Profiles and Settings.",
+          "Native Windows low-level keyboard and mouse hooks for recording and advanced hotkeys.",
           "Game/application profiles with process-aware auto switching.",
-          "Macro Studio with assignment library, editable timeline, repeat modes and native-event model.",
-          "Sandboxed Lua macro compiler that outputs into the same native macro event pipeline.",
-          "GitHub Releases updater with support for SHA-256 verified small patch packages.",
-          "Local troubleshooting logs: session, crash and performance logs with rotation.",
-        ],
-      },
-      {
-        title: "CHANGED",
-        items: [
-          "Hotkey matching now distinguishes physical input, external remaps and VxClick-generated input.",
-          "Hotkeys support left/right Ctrl, Alt, Shift and Win variants, chords and consume/pass-through behavior.",
-          "Keyboard output prefers scan-code SendInput and keeps extended-key identity where required.",
-          "Precision engine remains isolated from UI work and uses native scheduling/input paths.",
+          "Sandboxed Lua macro compiler and GitHub updater with SHA-256 verified small patch support.",
+          "Session, crash and performance logs with rotation.",
         ],
       },
       {
         title: "FIXED",
         items: [
-          "Prevent VxClick-generated SendInput events from recursively triggering VxClick hotkeys.",
-          "Preserve extended-key flags for arrows, navigation keys and right-side modifier keys.",
-          "Release Lua runtime closures before extracting the compiled macro timeline.",
-          "Removed the legacy eframe UI path that conflicted with the new Tauri architecture.",
-          "Updated GitHub Actions to Node 24 compatible action versions.",
+          "VxClick-generated SendInput no longer recursively triggers VxClick hotkeys.",
+          "Extended-key flags are preserved for arrows, navigation keys and right-side modifiers.",
         ],
       },
     ],
@@ -105,12 +207,7 @@ export function UpdatePanel() {
           <div className="card-copy">Version history, project links and GitHub update channel.</div>
         </div>
         <div className="quick-actions" style={{ marginTop: 0 }}>
-          <a
-            className="button"
-            href="https://github.com/Vxiey/Auto-Clicker"
-            target="_blank"
-            rel="noreferrer"
-          >
+          <a className="button" href="https://github.com/Vxiey/VxClick" target="_blank" rel="noreferrer">
             <Github size={14} /> GitHub
           </a>
           <Button disabled={checking} onClick={() => void check()}>
@@ -122,7 +219,7 @@ export function UpdatePanel() {
       <div className="divider" />
       <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
         <div className="inline">
-          <strong>Version v0.2.0</strong>
+          <strong>Version v{APP_VERSION}</strong>
           {info && (
             info.available
               ? <span className="status-pill status-recording">v{info.latest_version} available</span>
