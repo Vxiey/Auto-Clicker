@@ -1,0 +1,7 @@
+/target
+/src-tauri/target
+/node_modules
+/dist
+*.pdb
+*.exe
+.DS_Store

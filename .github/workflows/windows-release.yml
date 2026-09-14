@@ -1,0 +1,48 @@
+name: Windows Release Build
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: npm install
+
+      - name: Build VxClick Windows bundles
+        run: npm run tauri:build
+
+      - name: Collect portable executable
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force -Path artifacts | Out-Null
+          Copy-Item "src-tauri/target/release/vxclick.exe" "artifacts/VxClick.exe"
+          if (Test-Path "src-tauri/target/release/bundle") {
+            Copy-Item "src-tauri/target/release/bundle" "artifacts/bundle" -Recurse
+          }
+
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v7
+        with:
+          name: VxClick-Windows-x64
+          path: artifacts/**
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 30
