@@ -26,6 +26,8 @@ pub struct RecoilStep {
 pub struct RecoilPreset {
     pub id: String,
     pub name: String,
+    #[serde(default)]
+    pub character_name: String,
     pub weapon_name: String,
     pub slot: u8,
     pub enabled: bool,
@@ -42,6 +44,7 @@ impl RecoilPreset {
         Self {
             id: "default-primary".into(),
             name: "Primary".into(),
+            character_name: String::new(),
             weapon_name: "Custom".into(),
             slot: 1,
             enabled: true,
@@ -58,6 +61,7 @@ impl RecoilPreset {
         Self {
             id: "default-secondary".into(),
             name: "Secondary".into(),
+            character_name: String::new(),
             weapon_name: "Custom".into(),
             slot: 2,
             enabled: true,
@@ -511,6 +515,9 @@ fn validate_preset(preset: &RecoilPreset) -> Result<(), String> {
         return Err("invalid recoil preset id".into());
     }
     clean_name(&preset.name, "preset name")?;
+    if preset.character_name.len() > 64 {
+        return Err("character/operator name cannot exceed 64 characters".into());
+    }
     clean_name(&preset.weapon_name, "weapon name")?;
     if !matches!(preset.slot, 1 | 2) {
         return Err("recoil preset slot must be 1 or 2".into());
