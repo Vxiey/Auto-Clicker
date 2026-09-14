@@ -1,0 +1,57 @@
+name: Publish Wiki
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "CHANGELOG.md"
+      - ".github/workflows/wiki-sync.yml"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-wiki:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Prepare wiki pages
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf .wiki-publish
+          mkdir .wiki-publish
+          cp docs/*.md .wiki-publish/
+          cp docs/README.md .wiki-publish/Home.md
+          rm -f .wiki-publish/README.md
+          cp CHANGELOG.md .wiki-publish/Changelog.md
+
+          # Convert repository-doc links to GitHub Wiki page links.
+          for file in .wiki-publish/*.md; do
+            sed -i -E 's#\]\(([^)]+)\.md\)#](\1)#g' "$file"
+            sed -i 's#](../CHANGELOG)#](Changelog)#g' "$file"
+          done
+
+      - name: Publish to GitHub Wiki
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          git clone "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.wiki.git" .wiki-repo
+          find .wiki-repo -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+          cp -R .wiki-publish/. .wiki-repo/
+          cd .wiki-repo
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then
+            echo "Wiki already up to date."
+            exit 0
+          fi
+          git commit -m "Sync wiki from ${GITHUB_REPOSITORY}@${GITHUB_SHA}"
+          git push origin HEAD
