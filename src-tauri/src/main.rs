@@ -100,7 +100,11 @@ fn start_clicker(
     })?;
 
     if state.running.swap(true, Ordering::AcqRel) {
-        diagnostics.log(LogLevel::Debug, "clicker", "start ignored because engine is already running");
+        diagnostics.log(
+            LogLevel::Debug,
+            "clicker",
+            "start ignored because engine is already running",
+        );
         return Ok(());
     }
 
@@ -192,8 +196,8 @@ fn main() {
     tauri::Builder::default()
         .manage(EngineState::default())
         .setup(|app| {
-            let diagnostics = DiagnosticsState::initialize(app.handle())
-                .map_err(std::io::Error::other)?;
+            let diagnostics =
+                DiagnosticsState::initialize(app.handle()).map_err(std::io::Error::other)?;
             diagnostics.install_panic_hook();
             app.manage(diagnostics.clone());
 
