@@ -1,11 +1,19 @@
+mod profiles;
+mod updater;
+
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 use auto_clicker_core::engine::MouseButton;
 use auto_clicker_core::platform::windows::{LiveClickerConfig, PrecisionClicker};
+use profiles::{
+    ProfileState, activate_profile, create_profile, delete_profile, foreground_process,
+    profiles_snapshot, save_profile, set_profile_auto_switch,
+};
 use serde::Serialize;
-use tauri::State;
+use tauri::{Manager, State};
+use updater::{check_for_updates, stage_patch};
 
 struct SampleState {
     at: Instant,
@@ -128,10 +136,25 @@ fn stop_clicker(state: State<'_, EngineState>) {
 fn main() {
     tauri::Builder::default()
         .manage(EngineState::default())
+        .setup(|app| {
+            let profiles = ProfileState::load(app.handle()).map_err(std::io::Error::other)?;
+            profiles.start_watcher(app.handle().clone());
+            app.manage(profiles);
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             engine_status,
             start_clicker,
-            stop_clicker
+            stop_clicker,
+            profiles_snapshot,
+            create_profile,
+            save_profile,
+            activate_profile,
+            delete_profile,
+            set_profile_auto_switch,
+            foreground_process,
+            check_for_updates,
+            stage_patch
         ])
         .run(tauri::generate_context!())
         .expect("error while running VxClick");
