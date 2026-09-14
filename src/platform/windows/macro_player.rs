@@ -45,7 +45,7 @@ impl MacroPlayer {
         let mut held_keys = HashSet::new();
         let mut held_buttons = HashSet::new();
 
-        let result = (|| {
+        let result: Result<(), String> = (|| {
             for action in actions {
                 if stop.load(Ordering::Acquire) {
                     break;
