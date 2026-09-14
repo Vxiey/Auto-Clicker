@@ -1,21 +1,25 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   CircleStop,
   Clock3,
+  Code2,
   Gamepad2,
   GripVertical,
   Keyboard,
   ListRestart,
   MousePointerClick,
+  Play,
   Plus,
   Radio,
   Repeat2,
   RotateCcw,
+  Save,
   Search,
   Settings2,
   Trash2,
   Zap,
 } from "lucide-react";
+import { macroApi, type MacroEventRecord, type StoredMacro } from "./api";
 import { Button, Card, Field, Toggle } from "./components";
 import "./macro-studio.css";
 
@@ -86,9 +90,13 @@ const sequenceEvents: MacroEvent[] = [
   { id: 6, type: "key-up", label: "Shift", lane: "on-release" },
 ];
 
+const defaultLua = `-- VxClick Lua automation\nmouse_down("left")\nfor _ = 1, 5 do\n  move_mouse(0, 2)\n  sleep(10)\nend\nmouse_up("left")`;
+
 let nextId = 100;
 
 export function MacroStudio() {
+  const [macroId, setMacroId] = useState("");
+  const [storedMacros, setStoredMacros] = useState<StoredMacro[]>([]);
   const [name, setName] = useState("Quick Action");
   const [trigger, setTrigger] = useState("Mouse 4");
   const [macroType, setMacroType] = useState<MacroType>("no-repeat");
@@ -98,46 +106,139 @@ export function MacroStudio() {
   const [standardDelay, setStandardDelay] = useState(false);
   const [standardDelayMs, setStandardDelayMs] = useState(50);
   const [repeatDelayMs, setRepeatDelayMs] = useState(25);
+  const [speed, setSpeed] = useState(1);
   const [assignmentCategory, setAssignmentCategory] = useState<AssignmentCategory>("keys");
   const [search, setSearch] = useState("");
-  const lastEventAt = useRef(performance.now());
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [luaScript, setLuaScript] = useState(defaultLua);
+  const [luaStatus, setLuaStatus] = useState("");
 
   useEffect(() => {
     if (macroType === "sequence" && !events.some((event) => event.lane !== "main")) setEvents(sequenceEvents);
     if (macroType !== "sequence" && events.some((event) => event.lane !== "main")) setEvents(initialEvents);
   }, [macroType]);
 
+  const refresh = async () => {
+    try {
+      const snapshot = await macroApi.snapshot();
+      setStoredMacros(snapshot.document.macros);
+      setRecording(snapshot.recording);
+    } catch {
+      // Browser preview remains usable without Tauri.
+    }
+  };
+
   useEffect(() => {
-    if (!recording) return;
-    lastEventAt.current = performance.now();
+    void refresh();
+  }, []);
 
-    const recordKey = (event: globalThis.KeyboardEvent, type: "key-down" | "key-up") => {
-      if (event.repeat) return;
-      event.preventDefault();
-      const now = performance.now();
-      const elapsed = Math.max(0, Math.round(now - lastEventAt.current));
-      const lane: Lane = macroType === "sequence" ? "on-press" : "main";
-      setEvents((current) => {
-        const next = [...current];
-        if (recordDelays && current.length > 0) {
-          const delay = standardDelay ? standardDelayMs : elapsed;
-          if (delay > 0) next.push({ id: nextId++, type: "delay", label: `${delay} ms`, delayMs: delay, lane });
-        }
-        next.push({ id: nextId++, type, label: prettyKey(event.key), lane });
-        return next;
-      });
-      lastEventAt.current = now;
-    };
+  const loadMacro = (id: string) => {
+    if (!id) {
+      setMacroId("");
+      return;
+    }
+    const selected = storedMacros.find((item) => item.id === id);
+    if (!selected) return;
+    setMacroId(selected.id);
+    setName(selected.name);
+    setTrigger(selected.trigger);
+    setMacroType(selected.macroType);
+    setRepeatDelayMs(selected.repeatDelayMs);
+    setSpeed(selected.speed);
+    setEvents(selected.events.map(fromStoredEvent));
+  };
 
-    const down = (event: globalThis.KeyboardEvent) => recordKey(event, "key-down");
-    const up = (event: globalThis.KeyboardEvent) => recordKey(event, "key-up");
-    window.addEventListener("keydown", down, true);
-    window.addEventListener("keyup", up, true);
-    return () => {
-      window.removeEventListener("keydown", down, true);
-      window.removeEventListener("keyup", up, true);
-    };
-  }, [macroType, recordDelays, recording, standardDelay, standardDelayMs]);
+  const currentMacro = (): StoredMacro => ({
+    id: macroId,
+    name,
+    trigger,
+    macroType,
+    repeatDelayMs,
+    speed,
+    events: events.map(toStoredEvent),
+  });
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      const saved = await macroApi.save(currentMacro());
+      setMacroId(saved.id);
+      setError("");
+      await refresh();
+      return saved;
+    } catch (reason) {
+      setError(String(reason));
+      return null;
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const play = async () => {
+    const saved = await save();
+    if (!saved) return;
+    try {
+      await macroApi.play(saved.id);
+      setError("");
+    } catch (reason) {
+      setError(String(reason));
+    }
+  };
+
+  const removeCurrent = async () => {
+    if (!macroId) return;
+    setBusy(true);
+    try {
+      await macroApi.remove(macroId);
+      setMacroId("");
+      setName("New Macro");
+      setEvents([]);
+      await refresh();
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    setBusy(true);
+    try {
+      if (!recording) {
+        const lane = macroType === "sequence" ? "on-press" : "main";
+        await macroApi.startRecording(recordDelays, standardDelay ? standardDelayMs : null, lane);
+        setRecording(true);
+      } else {
+        const captured = await macroApi.stopRecording();
+        setRecording(false);
+        if (captured.length) setEvents(captured.map(fromStoredEvent));
+      }
+      setError("");
+    } catch (reason) {
+      setError(String(reason));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const validateLua = async () => {
+    try {
+      const count = await macroApi.validateLua(luaScript);
+      setLuaStatus(`Valid · ${count} native actions`);
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    }
+  };
+
+  const runLua = async () => {
+    try {
+      await macroApi.runLua(luaScript, speed);
+      setLuaStatus("Running through the native precision macro player");
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    }
+  };
 
   const totalDuration = useMemo(() => events.reduce((sum, event) => sum + (event.delayMs ?? 0), 0), [events]);
 
@@ -174,19 +275,21 @@ export function MacroStudio() {
       <div className="page-header macro-page-header">
         <div>
           <h1 className="page-title">Macro Studio</h1>
-          <div className="page-subtitle">G HUB-inspired assignment flow with VxClick precision timing and editable event playback.</div>
+          <div className="page-subtitle">Native global recording, persistent macros and QPC precision playback.</div>
         </div>
         <div className="macro-summary">
           <span>{events.filter((event) => event.type !== "delay").length} actions</span>
           <span>{totalDuration} ms delays</span>
-          <span className={recording ? "macro-live" : ""}>{recording ? "Recording" : "Ready"}</span>
+          <span className={recording ? "macro-live" : ""}>{recording ? "Recording globally" : "Ready"}</span>
         </div>
       </div>
+
+      {error && <Card><div style={{ color: "var(--danger)", fontSize: 12 }}>{error}</div></Card>}
 
       <div className="macro-layout">
         <Card className="macro-type-panel">
           <div className="macro-panel-title">Macro type</div>
-          <div className="macro-panel-copy">Choose how the assigned trigger controls playback.</div>
+          <div className="macro-panel-copy">Choose how the assigned global trigger controls playback.</div>
           <div className="macro-type-list">
             {macroTypes.map(({ id, title, copy, icon: Icon }) => (
               <button key={id} className={`macro-type-card ${macroType === id ? "active" : ""}`} onClick={() => setMacroType(id)}>
@@ -195,7 +298,7 @@ export function MacroStudio() {
               </button>
             ))}
           </div>
-          {(macroType === "repeat-hold" || macroType === "toggle") && (
+          {(macroType === "repeat-hold" || macroType === "toggle" || macroType === "sequence") && (
             <div className="macro-side-setting">
               <Field label="Delay between repeats">
                 <div className="macro-number-wrap">
@@ -210,18 +313,29 @@ export function MacroStudio() {
         <div className="macro-editor-stack">
           <Card className="macro-toolbar-card">
             <div className="macro-toolbar-grid">
+              <Field label="Saved macro">
+                <select className="select" value={macroId} onChange={(event) => loadMacro(event.target.value)}>
+                  <option value="">New / unsaved</option>
+                  {storedMacros.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                </select>
+              </Field>
               <Field label="Macro name"><input className="input" value={name} onChange={(event) => setName(event.target.value)} /></Field>
               <Field label="Trigger"><input className="input" value={trigger} onChange={(event) => setTrigger(event.target.value)} /></Field>
-              <div className="macro-record-controls">
-                <Button variant={recording ? "danger" : "primary"} onClick={() => setRecording((value) => !value)}>
-                  {recording ? <CircleStop size={14} /> : <Radio size={14} />}{recording ? "Stop recording" : "Start recording"}
-                </Button>
-                <Button onClick={() => setEvents([])}><Trash2 size={14} /> Clear</Button>
-              </div>
+              <Field label="Playback speed"><input className="input" type="number" min="0.1" max="10" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></Field>
+            </div>
+            <div className="macro-record-controls" style={{ marginTop: 12 }}>
+              <Button variant={recording ? "danger" : "primary"} disabled={busy} onClick={() => void toggleRecording()}>
+                {recording ? <CircleStop size={14} /> : <Radio size={14} />}{recording ? "Stop native recording" : "Start native recording"}
+              </Button>
+              <Button disabled={busy} onClick={() => void save()}><Save size={14} /> Save</Button>
+              <Button variant="primary" disabled={busy || events.length === 0} onClick={() => void play()}><Play size={14} /> Play</Button>
+              <Button onClick={() => void macroApi.stop()}><CircleStop size={14} /> Stop</Button>
+              <Button onClick={() => setEvents([])}><Trash2 size={14} /> Clear</Button>
+              <Button variant="danger" disabled={!macroId || busy} onClick={() => void removeCurrent()}><Trash2 size={14} /> Delete macro</Button>
             </div>
             <div className="macro-record-options">
-              <div className="macro-option-row"><div><strong>Record delays</strong><span>Keep timing between recorded inputs.</span></div><Toggle value={recordDelays} onChange={setRecordDelays} /></div>
-              <div className="macro-option-row"><div><strong>Use standard delay</strong><span>Replace recorded timing with one fixed delay.</span></div><Toggle value={standardDelay} onChange={setStandardDelay} /></div>
+              <div className="macro-option-row"><div><strong>Record delays</strong><span>Use QPC timestamps captured by the global Windows hooks.</span></div><Toggle value={recordDelays} onChange={setRecordDelays} /></div>
+              <div className="macro-option-row"><div><strong>Use standard delay</strong><span>Replace captured timing with one fixed delay.</span></div><Toggle value={standardDelay} onChange={setStandardDelay} /></div>
               <div className="macro-standard-delay"><input className="input" type="number" min="0" max="60000" disabled={!standardDelay} value={standardDelayMs} onChange={(event) => setStandardDelayMs(Number(event.target.value))} /><span>ms</span></div>
             </div>
           </Card>
@@ -237,7 +351,7 @@ export function MacroStudio() {
               <AssignmentLibrary category={assignmentCategory} setCategory={setAssignmentCategory} search={search} setSearch={setSearch} onAdd={addAssignment} />
               <Card className="macro-timeline-card">
                 <div className="macro-timeline-header">
-                  <div><div className="macro-panel-title">Action timeline</div><div className="macro-panel-copy">Add from Assignments, record live input or edit every event manually.</div></div>
+                  <div><div className="macro-panel-title">Action timeline</div><div className="macro-panel-copy">Add from Assignments, record global input or edit every event manually.</div></div>
                   <div className="macro-add-actions">
                     <button onClick={() => addEvent("key-down")}><Keyboard size={14} /> Key</button>
                     <button onClick={() => addEvent("mouse")}><MousePointerClick size={14} /> Mouse</button>
@@ -250,8 +364,37 @@ export function MacroStudio() {
           )}
         </div>
       </div>
+
+      <Card className="section-gap">
+        <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
+          <div><div className="macro-panel-title"><Code2 size={15} style={{ display: "inline", marginRight: 7 }} />Lua automation</div><div className="macro-panel-copy">Sandboxed Lua compiles into the same native InputAction timeline and precision player.</div></div>
+          <div className="quick-actions" style={{ marginTop: 0 }}><Button onClick={() => void validateLua()}>Validate</Button><Button variant="primary" onClick={() => void runLua()}><Play size={14} /> Run Lua</Button><Button onClick={() => void macroApi.stop()}><CircleStop size={14} /> Stop</Button></div>
+        </div>
+        <textarea className="input section-gap" style={{ width: "100%", minHeight: 180, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" }} value={luaScript} onChange={(event) => setLuaScript(event.target.value)} spellCheck={false} />
+        {luaStatus && <div className="card-copy">{luaStatus}</div>}
+      </Card>
     </div>
   );
+}
+
+function fromStoredEvent(event: MacroEventRecord): MacroEvent {
+  return {
+    id: event.id,
+    type: event.type,
+    label: event.label,
+    delayMs: event.delay_ms ?? undefined,
+    lane: event.lane,
+  };
+}
+
+function toStoredEvent(event: MacroEvent): MacroEventRecord {
+  return {
+    id: event.id,
+    type: event.type,
+    label: event.label,
+    delay_ms: event.delayMs ?? null,
+    lane: event.lane,
+  };
 }
 
 function AssignmentLibrary({ category, setCategory, search, setSearch, onAdd }: { category: AssignmentCategory; setCategory: (category: AssignmentCategory) => void; search: string; setSearch: (value: string) => void; onAdd: (assignment: Assignment) => void }) {
@@ -313,10 +456,4 @@ function eventLabel(type: MacroEventType) {
   if (type === "key-up") return "Key up";
   if (type === "mouse") return "Mouse";
   return "Delay";
-}
-
-function prettyKey(key: string) {
-  if (key === " ") return "Space";
-  if (key.length === 1) return key.toUpperCase();
-  return key.replace(/^Arrow/, "Arrow ");
 }

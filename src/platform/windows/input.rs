@@ -15,6 +15,7 @@ use crate::engine::MouseButton;
 pub const INJECTED_INPUT_TAG: usize = 0x4155_434C_4943_4B52;
 const XBUTTON1_DATA: u32 = 1;
 const XBUTTON2_DATA: u32 = 2;
+const MAX_BURST_CLICKS: usize = 16;
 
 #[derive(Default)]
 struct HeldInputState {
@@ -40,6 +41,23 @@ impl WindowsInput {
             let _ = send(&[mouse_input(0, 0, up_flags, data)]);
         }
         result
+    }
+
+    #[inline]
+    pub fn click_burst(&self, button: MouseButton, clicks: u32) -> Result<u32, String> {
+        let clicks = clicks.clamp(1, MAX_BURST_CLICKS as u32) as usize;
+        let (down_flags, up_flags, data) = mouse_button_flags(button);
+        let mut inputs: [INPUT; MAX_BURST_CLICKS * 2] =
+            std::array::from_fn(|_| unsafe { zeroed() });
+        for index in 0..clicks {
+            inputs[index * 2] = mouse_input(0, 0, down_flags, data);
+            inputs[index * 2 + 1] = mouse_input(0, 0, up_flags, data);
+        }
+        let result = send(&inputs[..clicks * 2]);
+        if result.is_err() {
+            let _ = send(&[mouse_input(0, 0, up_flags, data)]);
+        }
+        result.map(|_| clicks as u32)
     }
 
     #[inline]

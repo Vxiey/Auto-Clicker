@@ -12,7 +12,6 @@ import {
   Minimize2,
   MousePointer2,
   Play,
-  Plus,
   Settings,
   Sparkles,
   Square,
@@ -23,6 +22,7 @@ import type { Profile } from "./api";
 import { BenchmarkPanel } from "./BenchmarkPanel";
 import { MacroStudio } from "./MacroStudio";
 import { ProfilesPanel } from "./ProfilesPanel";
+import { RemapPanel } from "./RemapPanel";
 import { UpdatePanel } from "./UpdatePanel";
 import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./components";
 import { APP_VERSION } from "./version";
@@ -50,6 +50,7 @@ export default function App() {
   const [randomize, setRandomize] = useState(false);
   const [burst, setBurst] = useState(false);
   const [positionMode, setPositionMode] = useState("cursor");
+  const [positions, setPositions] = useState("");
   const [startHotkey, setStartHotkey] = useState("F6");
   const [stopHotkey, setStopHotkey] = useState("F8");
   const [tray, setTray] = useState(true);
@@ -80,9 +81,9 @@ export default function App() {
   const start = async () => {
     setStatus((current) => ({ ...current, running: true, target_cps: cps }));
     try {
-      await invoke("start_clicker", { cps, button });
+      await invoke("start_clicker", { cps, button, randomize, burst, positionMode, positions });
     } catch {
-      // Keep browser preview interactive.
+      setStatus((current) => ({ ...current, running: false }));
     }
   };
 
@@ -147,9 +148,9 @@ export default function App() {
 
         <div className="content">
           {page === "dashboard" && <Dashboard status={status} cps={cps} activeProfile={activeProfile} onStart={start} onStop={stop} open={setPage} />}
-          {page === "clicker" && <AutoClicker status={status} cps={cps} setCps={setCps} intervalUs={intervalUs} button={button} setButton={setButton} mode={mode} setMode={setMode} randomize={randomize} setRandomize={setRandomize} burst={burst} setBurst={setBurst} positionMode={positionMode} setPositionMode={setPositionMode} startHotkey={startHotkey} setStartHotkey={setStartHotkey} stopHotkey={stopHotkey} setStopHotkey={setStopHotkey} onStart={start} onStop={stop} />}
+          {page === "clicker" && <AutoClicker status={status} cps={cps} setCps={setCps} intervalUs={intervalUs} button={button} setButton={setButton} mode={mode} setMode={setMode} randomize={randomize} setRandomize={setRandomize} burst={burst} setBurst={setBurst} positionMode={positionMode} setPositionMode={setPositionMode} positions={positions} setPositions={setPositions} startHotkey={startHotkey} setStartHotkey={setStartHotkey} stopHotkey={stopHotkey} setStopHotkey={setStopHotkey} onStart={start} onStop={stop} />}
           {page === "macros" && <MacroStudio />}
-          {page === "remap" && <Remap />}
+          {page === "remap" && <RemapPanel />}
           {page === "profiles" && <ProfilesPanel onActiveProfile={applyProfile} />}
           {page === "settings" && <SettingsPage tray={tray} setTray={setTray} startup={startup} setStartup={setStartup} diagnostics={diagnostics} setDiagnostics={setDiagnostics} />}
         </div>
@@ -179,20 +180,16 @@ function Dashboard({ status, cps, activeProfile, onStart, onStop, open }: { stat
   </div>;
 }
 
-function AutoClicker(props: { status: EngineStatus; cps: number; setCps: (value: number) => void; intervalUs: number; button: string; setButton: (value: string) => void; mode: string; setMode: (value: string) => void; randomize: boolean; setRandomize: (value: boolean) => void; burst: boolean; setBurst: (value: boolean) => void; positionMode: string; setPositionMode: (value: string) => void; startHotkey: string; setStartHotkey: (value: string) => void; stopHotkey: string; setStopHotkey: (value: string) => void; onStart: () => void; onStop: () => void }) {
+function AutoClicker(props: { status: EngineStatus; cps: number; setCps: (value: number) => void; intervalUs: number; button: string; setButton: (value: string) => void; mode: string; setMode: (value: string) => void; randomize: boolean; setRandomize: (value: boolean) => void; burst: boolean; setBurst: (value: boolean) => void; positionMode: string; setPositionMode: (value: string) => void; positions: string; setPositions: (value: string) => void; startHotkey: string; setStartHotkey: (value: string) => void; stopHotkey: string; setStopHotkey: (value: string) => void; onStart: () => void; onStop: () => void }) {
   return <div className="page">
     <PageHeader title="Auto Clicker" subtitle="Configure click behavior, precision, hotkeys and cursor targeting." right={<StatusPill status={props.status.running ? "Running" : "Stopped"} />} />
     <div className="grid grid-2">
       <Card><h2 className="card-title">Click settings</h2><div className="card-copy">Core click behavior.</div><div className="form-row section-gap"><Field label="Click type"><select className="select" value={props.button} onChange={(event) => props.setButton(event.target.value)}><option value="left">Left</option><option value="right">Right</option><option value="middle">Middle</option><option value="x1">X1 / Mouse 4</option><option value="x2">X2 / Mouse 5</option></select></Field><Field label="Mode"><select className="select" value={props.mode} onChange={(event) => props.setMode(event.target.value)}><option value="hold">Hold</option><option value="toggle">Toggle</option><option value="once">Once</option></select></Field></div><div className="section-gap"><Field label={`CPS · ${props.cps.toFixed(1)}`}><input className="range" type="range" min="1" max="20000" step="1" value={props.cps} onChange={(event) => props.setCps(Number(event.target.value))} /></Field></div><div className="form-row section-gap"><Field label="Exact CPS"><input className="input" type="number" min="1" max="20000" value={props.cps} onChange={(event) => props.setCps(Math.max(1, Math.min(20000, Number(event.target.value))))} /></Field><Field label="Interval"><input className="input" readOnly value={`${props.intervalUs.toFixed(3)} µs`} /></Field></div></Card>
-      <Card><h2 className="card-title">Advanced timing</h2><div className="card-copy">High-performance options stay separate from normal controls.</div><SettingRow title="Randomization" copy="Controlled interval variation around the selected CPS." value={props.randomize} onChange={props.setRandomize} /><SettingRow title="Burst mode" copy="Maximum-throughput batches when exact spacing is not needed." value={props.burst} onChange={props.setBurst} /><div className="divider" /><div className="card-copy">Precision mode remains enabled for normal click scheduling.</div></Card>
+      <Card><h2 className="card-title">Advanced timing</h2><div className="card-copy">These controls now run in the native Rust click scheduler.</div><SettingRow title="Randomization" copy="±5% allocation-free interval variation around the selected CPS." value={props.randomize} onChange={props.setRandomize} /><SettingRow title="Burst mode" copy="Batch four clicks per SendInput call while preserving average target CPS." value={props.burst} onChange={props.setBurst} /><div className="divider" /><div className="card-copy">Precision mode remains enabled for normal click scheduling.</div></Card>
     </div>
-    <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Position mode</h2><div className="form-row section-gap"><Field label="Target"><select className="select" value={props.positionMode} onChange={(event) => props.setPositionMode(event.target.value)}><option value="cursor">Current cursor</option><option value="fixed">Fixed position</option><option value="multi">Multi-point</option></select></Field><Field label="Coordinates"><input className="input" placeholder="X, Y" disabled={props.positionMode === "cursor"} /></Field></div></Card><Card><h2 className="card-title">Hotkeys</h2><div className="form-row section-gap"><Field label="Start / Stop"><input className="input" value={props.startHotkey} onChange={(event) => props.setStartHotkey(event.target.value)} /></Field><Field label="Emergency stop"><input className="input" value={props.stopHotkey} onChange={(event) => props.setStopHotkey(event.target.value)} /></Field></div></Card></div>
+    <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Position mode</h2><div className="form-row section-gap"><Field label="Target"><select className="select" value={props.positionMode} onChange={(event) => props.setPositionMode(event.target.value)}><option value="cursor">Current cursor</option><option value="fixed">Fixed position</option><option value="multi">Multi-point</option></select></Field><Field label="Coordinates"><input className="input" value={props.positions} onChange={(event) => props.setPositions(event.target.value)} placeholder={props.positionMode === "multi" ? "100,200; 300,400" : "100, 200"} disabled={props.positionMode === "cursor"} /></Field></div><div className="card-copy">Multi-point mode cycles the configured coordinates without allocating in the hot loop.</div></Card><Card><h2 className="card-title">Hotkeys</h2><div className="form-row section-gap"><Field label="Start / Stop"><input className="input" value={props.startHotkey} onChange={(event) => props.setStartHotkey(event.target.value)} /></Field><Field label="Emergency stop"><input className="input" value={props.stopHotkey} onChange={(event) => props.setStopHotkey(event.target.value)} /></Field></div></Card></div>
     <Card className="section-gap"><div className="inline" style={{ justifyContent: "space-between", width: "100%" }}><div><h2 className="card-title">Live status</h2><div className="card-copy">Target {props.cps.toFixed(1)} CPS · actual {props.status.actual_cps.toFixed(1)} CPS · {props.status.clicks.toLocaleString()} clicks</div></div><div className="quick-actions" style={{ marginTop: 0 }}><Button variant="primary" disabled={props.status.running} onClick={props.onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!props.status.running} onClick={props.onStop}><CircleStop size={14} /> Stop</Button></div></div></Card>
   </div>;
-}
-
-function Remap() {
-  return <div className="page"><PageHeader title="Key Remap" subtitle="Map keyboard and mouse inputs to keys, mouse actions or macros." right={<Button variant="primary"><Plus size={14} /> Add Mapping</Button>} /><Card><table className="table"><thead><tr><th>From</th><th></th><th>To</th><th>Context</th><th>Status</th></tr></thead><tbody><tr><td><span className="kbd">Mouse 5</span></td><td>→</td><td><span className="kbd">Ctrl + C</span></td><td>Global</td><td><span className="status-pill status-ready">Enabled</span></td></tr><tr><td><span className="kbd">Caps Lock</span></td><td>→</td><td><span className="kbd">F</span></td><td>Game profile</td><td><span className="status-pill status-ready">Enabled</span></td></tr></tbody></table></Card></div>;
 }
 
 function SettingsPage({ tray, setTray, startup, setStartup, diagnostics, setDiagnostics }: { tray: boolean; setTray: (value: boolean) => void; startup: boolean; setStartup: (value: boolean) => void; diagnostics: boolean; setDiagnostics: (value: boolean) => void }) {

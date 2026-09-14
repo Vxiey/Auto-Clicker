@@ -31,6 +31,45 @@ export type ProfilesSnapshot = {
   foreground_process: string | null;
 };
 
+export type MacroEventRecord = {
+  id: number;
+  type: "key-down" | "key-up" | "mouse" | "delay";
+  label: string;
+  delay_ms?: number | null;
+  lane: "main" | "on-press" | "while-holding" | "on-release";
+};
+
+export type StoredMacro = {
+  id: string;
+  name: string;
+  trigger: string;
+  macroType: "no-repeat" | "repeat-hold" | "toggle" | "sequence";
+  repeatDelayMs: number;
+  speed: number;
+  events: MacroEventRecord[];
+};
+
+export type MacroSnapshot = {
+  document: { schema_version: number; macros: StoredMacro[] };
+  recording: boolean;
+  playing_macro_id: string | null;
+};
+
+export type StoredRemap = {
+  id: string;
+  name: string;
+  trigger: string;
+  action: string;
+  process: string;
+  enabled: boolean;
+  consume: boolean;
+};
+
+export type RemapDocument = {
+  schema_version: number;
+  mappings: StoredRemap[];
+};
+
 export type PatchAsset = {
   from_version: string;
   to_version: string;
@@ -104,6 +143,25 @@ export const profilesApi = {
   remove: (id: string) => invoke<void>("delete_profile", { id }),
   setAutoSwitch: (enabled: boolean) => invoke<void>("set_profile_auto_switch", { enabled }),
   foregroundProcess: () => invoke<string | null>("foreground_process"),
+};
+
+export const macroApi = {
+  snapshot: () => invoke<MacroSnapshot>("macros_snapshot"),
+  save: (macroDef: StoredMacro) => invoke<StoredMacro>("save_macro", { macroDef }),
+  remove: (id: string) => invoke<void>("delete_macro", { id }),
+  play: (id: string) => invoke<void>("play_macro", { id }),
+  stop: () => invoke<void>("stop_macro"),
+  startRecording: (recordDelays: boolean, standardDelayMs: number | null, lane: string) =>
+    invoke<void>("start_macro_recording", { recordDelays, standardDelayMs, lane }),
+  stopRecording: () => invoke<MacroEventRecord[]>("stop_macro_recording"),
+  validateLua: (script: string) => invoke<number>("validate_lua_script", { script }),
+  runLua: (script: string, speed = 1) => invoke<void>("run_lua_script", { script, speed }),
+};
+
+export const remapApi = {
+  snapshot: () => invoke<RemapDocument>("remaps_snapshot"),
+  save: (mapping: StoredRemap) => invoke<StoredRemap>("save_remap", { mapping }),
+  remove: (id: string) => invoke<void>("delete_remap", { id }),
 };
 
 export const updaterApi = {

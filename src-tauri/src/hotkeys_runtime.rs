@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
@@ -11,11 +12,16 @@ use auto_clicker_core::platform::windows::{
 use tauri::{AppHandle, Manager};
 
 use crate::diagnostics::{DiagnosticsState, LogLevel};
+use crate::macros::MacroState;
 use crate::profiles::{ProfileState, profiles_snapshot};
-use crate::{EngineState, start_clicker_inner, stop_clicker_inner};
+use crate::remaps::RemapState;
+use crate::{
+    ClickerRuntimeOptions, EngineState, start_clicker_with_options_inner, stop_clicker_inner,
+};
 
 const CLICKER_HOTKEY_ID: u64 = 1;
 const EMERGENCY_STOP_ID: u64 = 2;
+const MACRO_HOTKEY_BASE: u64 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActiveMode {
@@ -30,6 +36,10 @@ struct ActiveProfileConfig {
     cps: f64,
     button: MouseButton,
     mode: ActiveMode,
+    randomize: bool,
+    burst: bool,
+    macro_by_hotkey: HashMap<u64, String>,
+    remap_by_hotkey: HashMap<u64, String>,
 }
 
 pub struct HotkeyRuntime {
@@ -41,7 +51,7 @@ impl HotkeyRuntime {
     pub fn start(app: AppHandle) -> Result<Self, String> {
         WindowsHotkeyManager::clear_bindings();
         let events = WindowsHotkeyManager::subscribe()?;
-        let (recorder, _captured) = GlobalInputRecorder::start()?;
+        let (recorder, captured) = GlobalInputRecorder::start()?;
 
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
@@ -52,15 +62,19 @@ impl HotkeyRuntime {
                 let mut active: Option<ActiveProfileConfig> = None;
 
                 while !worker_stop.load(Ordering::Acquire) {
-                    if let Err(error) = sync_profile(&app, &mut active) {
+                    if let Err(error) = sync_runtime(&app, &mut active) {
                         app.state::<DiagnosticsState>().log(
                             LogLevel::Error,
                             "hotkeys",
-                            &format!("profile hotkey sync failed: {error}"),
+                            &format!("runtime hotkey sync failed: {error}"),
                         );
                     }
 
-                    let event = match events.recv_timeout(Duration::from_millis(250)) {
+                    for input in captured.try_iter() {
+                        app.state::<MacroState>().capture(&input);
+                    }
+
+                    let event = match events.recv_timeout(Duration::from_millis(25)) {
                         Ok(event) => event,
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
@@ -76,9 +90,8 @@ impl HotkeyRuntime {
                             (ActiveMode::Toggle, HotkeyPhase::Pressed) => {
                                 if engine.running.load(Ordering::Acquire) {
                                     stop_clicker_inner(&engine, &diagnostics);
-                                } else if let Err(error) = start_clicker_inner(
-                                    config.cps,
-                                    config.button,
+                                } else if let Err(error) = start_profile_clicker(
+                                    config,
                                     &engine,
                                     &diagnostics,
                                 ) {
@@ -91,12 +104,8 @@ impl HotkeyRuntime {
                             }
                             (ActiveMode::Hold, HotkeyPhase::Pressed) => {
                                 if !engine.running.load(Ordering::Acquire)
-                                    && let Err(error) = start_clicker_inner(
-                                        config.cps,
-                                        config.button,
-                                        &engine,
-                                        &diagnostics,
-                                    )
+                                    && let Err(error) =
+                                        start_profile_clicker(config, &engine, &diagnostics)
                                 {
                                     diagnostics.log(
                                         LogLevel::Error,
@@ -125,6 +134,7 @@ impl HotkeyRuntime {
                         EMERGENCY_STOP_ID if event.phase == HotkeyPhase::Pressed => {
                             diagnostics.log(LogLevel::Warn, "hotkeys", "emergency stop triggered");
                             stop_clicker_inner(&engine, &diagnostics);
+                            let _ = app.state::<MacroState>().stop_playback();
                             if let Err(error) = WindowsInput.release_all() {
                                 diagnostics.log(
                                     LogLevel::Error,
@@ -133,10 +143,39 @@ impl HotkeyRuntime {
                                 );
                             }
                         }
+                        id if config.macro_by_hotkey.contains_key(&id) => {
+                            if let Some(macro_id) = config.macro_by_hotkey.get(&id)
+                                && let Err(error) = app
+                                    .state::<MacroState>()
+                                    .handle_hotkey(macro_id, event.phase)
+                            {
+                                diagnostics.log(
+                                    LogLevel::Error,
+                                    "macros",
+                                    &format!("macro hotkey failed: {error}"),
+                                );
+                            }
+                        }
+                        id if config.remap_by_hotkey.contains_key(&id) => {
+                            if let Some(mapping_id) = config.remap_by_hotkey.get(&id)
+                                && let Err(error) = app.state::<RemapState>().execute(
+                                    mapping_id,
+                                    event.phase,
+                                    &app.state::<MacroState>(),
+                                )
+                            {
+                                diagnostics.log(
+                                    LogLevel::Error,
+                                    "remap",
+                                    &format!("remap execution failed: {error}"),
+                                );
+                            }
+                        }
                         _ => {}
                     }
                 }
 
+                let _ = app.state::<MacroState>().stop_playback();
                 let _ = WindowsInput.release_all();
                 WindowsHotkeyManager::clear_bindings();
                 WindowsHotkeyManager::unsubscribe();
@@ -154,7 +193,25 @@ impl HotkeyRuntime {
     }
 }
 
-fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Result<(), String> {
+fn start_profile_clicker(
+    config: &ActiveProfileConfig,
+    engine: &EngineState,
+    diagnostics: &DiagnosticsState,
+) -> Result<(), String> {
+    start_clicker_with_options_inner(
+        config.cps,
+        config.button,
+        ClickerRuntimeOptions {
+            randomize_percent: if config.randomize { 5.0 } else { 0.0 },
+            burst_size: if config.burst { 4 } else { 1 },
+            positions: Vec::new(),
+        },
+        engine,
+        diagnostics,
+    )
+}
+
+fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Result<(), String> {
     let snapshot = profiles_snapshot(app.state::<ProfileState>())?;
     let profile = snapshot
         .document
@@ -169,15 +226,57 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         "once" => ActiveMode::Once,
         _ => ActiveMode::Toggle,
     };
-    let signature = format!(
-        "{}|{}|{}|{:.6}|{}|{}",
+
+    let macros = app.state::<MacroState>().runtime_macros()?;
+    let runtime_remaps = app
+        .state::<RemapState>()
+        .runtime_bindings(snapshot.foreground_process.as_deref())?;
+
+    let mut bindings = vec![
+        RegisteredHotkey {
+            id: CLICKER_HOTKEY_ID,
+            binding: HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true),
+        },
+        RegisteredHotkey {
+            id: EMERGENCY_STOP_ID,
+            binding: HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?.with_consume(true),
+        },
+    ];
+
+    let mut macro_by_hotkey = HashMap::new();
+    for (index, macro_def) in macros.iter().enumerate() {
+        let id = MACRO_HOTKEY_BASE + index as u64;
+        bindings.push(RegisteredHotkey {
+            id,
+            binding: HotkeyBinding::parse(&macro_def.trigger)?.with_consume(false),
+        });
+        macro_by_hotkey.insert(id, macro_def.id.clone());
+    }
+
+    let mut remap_by_hotkey = HashMap::new();
+    for remap in runtime_remaps {
+        remap_by_hotkey.insert(remap.hotkey.id, remap.mapping_id);
+        bindings.push(remap.hotkey);
+    }
+
+    let mut signature = format!(
+        "{}|{}|{}|{:.6}|{}|{}|{}|{}|{}",
         profile.id,
         profile.clicker.start_hotkey,
         profile.clicker.emergency_stop_hotkey,
         profile.clicker.cps,
         profile.clicker.button,
-        profile.clicker.mode
+        profile.clicker.mode,
+        profile.clicker.randomize,
+        profile.clicker.burst,
+        snapshot.foreground_process.as_deref().unwrap_or("")
     );
+    for binding in &bindings {
+        signature.push('|');
+        signature.push_str(&binding.id.to_string());
+        signature.push(':');
+        signature.push_str(binding.binding.canonical());
+    }
 
     if active
         .as_ref()
@@ -186,19 +285,7 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         return Ok(());
     }
 
-    let start = HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true);
-    let emergency =
-        HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?.with_consume(true);
-    WindowsHotkeyManager::replace_bindings(vec![
-        RegisteredHotkey {
-            id: CLICKER_HOTKEY_ID,
-            binding: start,
-        },
-        RegisteredHotkey {
-            id: EMERGENCY_STOP_ID,
-            binding: emergency,
-        },
-    ])?;
+    WindowsHotkeyManager::replace_bindings(bindings)?;
 
     let engine = app.state::<EngineState>();
     engine
@@ -212,11 +299,15 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         LogLevel::Info,
         "hotkeys",
         &format!(
-            "profile={} start={} emergency={} mode={}",
+            "profile={} start={} emergency={} mode={} randomize={} burst={} macros={} remaps={}",
             profile.name,
             profile.clicker.start_hotkey,
             profile.clicker.emergency_stop_hotkey,
-            profile.clicker.mode
+            profile.clicker.mode,
+            profile.clicker.randomize,
+            profile.clicker.burst,
+            macro_by_hotkey.len(),
+            remap_by_hotkey.len()
         ),
     );
 
@@ -225,6 +316,10 @@ fn sync_profile(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         cps: profile.clicker.cps,
         button,
         mode,
+        randomize: profile.clicker.randomize,
+        burst: profile.clicker.burst,
+        macro_by_hotkey,
+        remap_by_hotkey,
     });
     Ok(())
 }
