@@ -31,6 +31,26 @@ jobs:
       - name: Build VxClick Windows bundles
         run: npm run tauri:build
 
+      - name: Verify Windows shell metadata
+        shell: pwsh
+        run: |
+          $exePath = "src-tauri/target/release/vxclick.exe"
+          $exe = [System.IO.File]::ReadAllBytes($exePath)
+          $peOffset = [BitConverter]::ToInt32($exe, 0x3C)
+          $subsystem = [BitConverter]::ToUInt16($exe, $peOffset + 24 + 68)
+          if ($subsystem -ne 2) {
+            throw "vxclick.exe must use IMAGE_SUBSYSTEM_WINDOWS_GUI (2), got $subsystem"
+          }
+
+          $icoPath = "src-tauri/icons/icon.ico"
+          $ico = [System.IO.File]::ReadAllBytes($icoPath)
+          $iconCount = [BitConverter]::ToUInt16($ico, 4)
+          if ($iconCount -lt 6) {
+            throw "icon.ico must contain a multi-resolution icon set; found only $iconCount image(s)"
+          }
+
+          Write-Host "Verified GUI subsystem and $iconCount Windows icon layers."
+
       - name: Collect portable executable
         shell: pwsh
         run: |
