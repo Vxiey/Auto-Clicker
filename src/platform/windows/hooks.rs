@@ -188,7 +188,8 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: usize, lparam: isize)
                 CapturedInputSource::ExternalInjected
             };
             let extended = (data.flags & LLKHF_EXTENDED) != 0;
-            let virtual_key = normalize_keyboard_vk(data.vkCode as u16, data.scanCode as u16, extended);
+            let virtual_key =
+                normalize_keyboard_vk(data.vkCode as u16, data.scanCode as u16, extended);
             let transition = match wparam as u32 {
                 WM_KEYDOWN | WM_SYSKEYDOWN => Some((
                     true,
