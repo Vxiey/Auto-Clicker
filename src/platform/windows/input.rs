@@ -95,7 +95,10 @@ fn keyboard_input(virtual_key: u16, key_up: bool) -> INPUT {
         (virtual_key, 0, base_flags)
     } else {
         let scan = (raw_scan & 0xff) as u16;
-        let extended = if (raw_scan >> 8) != 0 {
+        // MAPVK_VK_TO_VSC_EX normally returns 0xE0/0xE1 in the high byte for
+        // extended keys. Keep an explicit VK fallback because some Windows
+        // environments/drivers only return the base scan code.
+        let extended = if (raw_scan >> 8) != 0 || is_extended_virtual_key(virtual_key) {
             KEYEVENTF_EXTENDEDKEY
         } else {
             0
@@ -113,6 +116,27 @@ fn keyboard_input(virtual_key: u16, key_up: bool) -> INPUT {
         dwExtraInfo: INJECTED_INPUT_TAG,
     };
     input
+}
+
+#[inline]
+fn is_extended_virtual_key(virtual_key: u16) -> bool {
+    matches!(
+        virtual_key,
+        0x21 // VK_PRIOR / Page Up
+            | 0x22 // VK_NEXT / Page Down
+            | 0x23 // VK_END
+            | 0x24 // VK_HOME
+            | 0x25 // VK_LEFT
+            | 0x26 // VK_UP
+            | 0x27 // VK_RIGHT
+            | 0x28 // VK_DOWN
+            | 0x2D // VK_INSERT
+            | 0x2E // VK_DELETE
+            | 0x6F // VK_DIVIDE
+            | 0x90 // VK_NUMLOCK
+            | 0xA3 // VK_RCONTROL
+            | 0xA5 // VK_RMENU / Right Alt
+    )
 }
 
 #[inline]
