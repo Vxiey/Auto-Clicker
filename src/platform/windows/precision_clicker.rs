@@ -229,6 +229,17 @@ fn effective_spin_window(configured_us: f64, cps: f64) -> f64 {
 }
 
 #[inline]
+fn controlled_sleep_cap_us(remaining_us: f64) -> u64 {
+    if remaining_us > 50_000.0 {
+        20_000
+    } else if remaining_us > 10_000.0 {
+        5_000
+    } else {
+        1_000
+    }
+}
+
+#[inline]
 fn randomized_interval_factor(state: &mut u64, percent: f64) -> f64 {
     if percent <= 0.0 {
         return 1.0;
@@ -286,7 +297,9 @@ fn wait_until_controlled(
         let remaining_us = clock.ticks_to_micros(deadline - now);
         if remaining_us > coarse_threshold_us {
             let sleep_us = (remaining_us - spin_window_us).max(100.0) as u64;
-            thread::sleep(Duration::from_micros(sleep_us.min(1_000)));
+            thread::sleep(Duration::from_micros(
+                sleep_us.min(controlled_sleep_cap_us(remaining_us)),
+            ));
         } else if remaining_us > spin_window_us {
             thread::yield_now();
         } else {
@@ -312,8 +325,8 @@ fn tune_current_worker() {
 #[cfg(test)]
 mod tests {
     use super::{
-        LiveClickerConfig, effective_spin_window, next_deadline, randomized_interval_factor,
-        validate_live_config,
+        LiveClickerConfig, controlled_sleep_cap_us, effective_spin_window, next_deadline,
+        randomized_interval_factor, validate_live_config,
     };
 
     #[test]
@@ -350,5 +363,12 @@ mod tests {
     fn high_cps_reduces_busy_spin_window() {
         assert_eq!(effective_spin_window(350.0, 10_000.0), 50.0);
         assert_eq!(effective_spin_window(350.0, 250.0), 350.0);
+    }
+
+    #[test]
+    fn long_intervals_reduce_wakeup_frequency() {
+        assert_eq!(controlled_sleep_cap_us(100_000.0), 20_000);
+        assert_eq!(controlled_sleep_cap_us(20_000.0), 5_000);
+        assert_eq!(controlled_sleep_cap_us(5_000.0), 1_000);
     }
 }
