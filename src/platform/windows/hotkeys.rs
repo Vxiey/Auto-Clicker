@@ -75,18 +75,18 @@ impl WindowsHotkeyManager {
     }
 
     pub fn clear_bindings() {
-        if let Some(registry) = BINDINGS.get() {
-            if let Ok(mut guard) = registry.write() {
-                guard.clear();
-            }
+        if let Some(registry) = BINDINGS.get()
+            && let Ok(mut guard) = registry.write()
+        {
+            guard.clear();
         }
     }
 
     pub fn unsubscribe() {
-        if let Some(slot) = EVENT_SENDER.get() {
-            if let Ok(mut guard) = slot.lock() {
-                *guard = None;
-            }
+        if let Some(slot) = EVENT_SENDER.get()
+            && let Ok(mut guard) = slot.lock()
+        {
+            *guard = None;
         }
     }
 }
