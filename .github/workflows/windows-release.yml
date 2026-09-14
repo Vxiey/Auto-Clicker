@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - release/v1.0.0-publish
     tags: ["v*"]
   pull_request:
     branches: [main]
@@ -70,16 +69,26 @@ jobs:
           retention-days: 30
 
       - name: Publish VxClick 1.0.0 GitHub Release
-        if: github.ref == 'refs/heads/release/v1.0.0-publish'
+        if: github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: VxClick 1.0.0')
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           $tag = "v1.0.0"
+          $releaseSha = $env:GITHUB_SHA
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -f $tag $releaseSha
+          git push origin "refs/tags/$tag" --force
+
           gh release view $tag *> $null
-          if ($LASTEXITCODE -ne 0) {
-            gh release create $tag --target $env:GITHUB_SHA --title "VxClick 1.0.0" --notes-file "docs/releases/v1.0.0.md"
+          if ($LASTEXITCODE -eq 0) {
+            gh release edit $tag --target $releaseSha --title "VxClick 1.0.0" --notes-file "docs/releases/v1.0.0.md"
+          } else {
+            gh release create $tag --target $releaseSha --title "VxClick 1.0.0" --notes-file "docs/releases/v1.0.0.md"
           }
+
           Get-ChildItem -Path artifacts -Recurse -File | ForEach-Object {
             gh release upload $tag $_.FullName --clobber
           }
