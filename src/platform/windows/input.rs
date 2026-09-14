@@ -1,10 +1,11 @@
 use std::mem::{size_of, zeroed};
 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    INPUT, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
-    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
-    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN,
-    MOUSEEVENTF_XUP, MOUSEINPUT, SendInput,
+    INPUT, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP,
+    KEYEVENTF_SCANCODE, MAPVK_VK_TO_VSC_EX, MOUSEEVENTF_LEFTDOWN, MOUSEEVENTF_LEFTUP,
+    MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE, MOUSEEVENTF_RIGHTDOWN,
+    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT,
+    MapVirtualKeyW, SendInput,
 };
 
 use crate::engine::MouseButton;
@@ -51,12 +52,12 @@ impl WindowsInput {
 
     #[inline]
     pub fn key_down(&self, virtual_key: u16) -> Result<(), String> {
-        send(&[keyboard_input(virtual_key, 0)])
+        send(&[keyboard_input(virtual_key, false)])
     }
 
     #[inline]
     pub fn key_up(&self, virtual_key: u16) -> Result<(), String> {
-        send(&[keyboard_input(virtual_key, KEYEVENTF_KEYUP)])
+        send(&[keyboard_input(virtual_key, true)])
     }
 }
 
@@ -84,12 +85,29 @@ fn mouse_input(dx: i32, dy: i32, flags: u32, data: u32) -> INPUT {
     input
 }
 
-fn keyboard_input(virtual_key: u16, flags: u32) -> INPUT {
+fn keyboard_input(virtual_key: u16, key_up: bool) -> INPUT {
+    let raw_scan = unsafe { MapVirtualKeyW(virtual_key as u32, MAPVK_VK_TO_VSC_EX) };
+    let base_flags = if key_up { KEYEVENTF_KEYUP } else { 0 };
+
+    let (w_vk, w_scan, flags) = if raw_scan == 0 {
+        // Some special/OEM keys do not have a useful scan-code mapping. Keep a
+        // virtual-key fallback instead of silently emitting an invalid event.
+        (virtual_key, 0, base_flags)
+    } else {
+        let scan = (raw_scan & 0xff) as u16;
+        let extended = if (raw_scan >> 8) != 0 {
+            KEYEVENTF_EXTENDEDKEY
+        } else {
+            0
+        };
+        (0, scan, base_flags | KEYEVENTF_SCANCODE | extended)
+    };
+
     let mut input: INPUT = unsafe { zeroed() };
     input.r#type = INPUT_KEYBOARD;
     input.Anonymous.ki = KEYBDINPUT {
-        wVk: virtual_key,
-        wScan: 0,
+        wVk: w_vk,
+        wScan: w_scan,
         dwFlags: flags,
         time: 0,
         dwExtraInfo: INJECTED_INPUT_TAG,
@@ -110,5 +128,30 @@ fn send(inputs: &[INPUT]) -> Result<(), String> {
         Ok(())
     } else {
         Err(format!("SendInput sent {sent}/{} events", inputs.len()))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, KEYEVENTF_SCANCODE,
+    };
+
+    use super::keyboard_input;
+
+    #[test]
+    fn key_up_keeps_scan_code_and_release_flags() {
+        let input = keyboard_input(0x41, true);
+        let keyboard = unsafe { input.Anonymous.ki };
+        assert_ne!(keyboard.dwFlags & KEYEVENTF_KEYUP, 0);
+        assert_ne!(keyboard.dwFlags & KEYEVENTF_SCANCODE, 0);
+    }
+
+    #[test]
+    fn arrow_key_uses_extended_flag() {
+        let input = keyboard_input(0x26, false);
+        let keyboard = unsafe { input.Anonymous.ki };
+        assert_ne!(keyboard.dwFlags & KEYEVENTF_SCANCODE, 0);
+        assert_ne!(keyboard.dwFlags & KEYEVENTF_EXTENDEDKEY, 0);
     }
 }
