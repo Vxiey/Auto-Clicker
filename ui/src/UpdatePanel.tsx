@@ -3,8 +3,8 @@ import {
   AlertTriangle,
   ChevronDown,
   ChevronUp,
+  Code2,
   Download,
-  Github,
   PackageCheck,
   RefreshCw,
   ShieldCheck,
@@ -208,7 +208,7 @@ export function UpdatePanel() {
         </div>
         <div className="quick-actions" style={{ marginTop: 0 }}>
           <a className="button" href="https://github.com/Vxiey/VxClick" target="_blank" rel="noreferrer">
-            <Github size={14} /> GitHub
+            <Code2 size={14} /> GitHub
           </a>
           <Button disabled={checking} onClick={() => void check()}>
             <RefreshCw size={14} /> Check updates
