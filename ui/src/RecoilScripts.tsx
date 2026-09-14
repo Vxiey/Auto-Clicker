@@ -1,5 +1,17 @@
 import { useEffect, useMemo, useState } from "react";
-import { Crosshair, Gamepad2, Pause, Play, Plus, Save, ShieldOff, SlidersHorizontal } from "lucide-react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Crosshair,
+  Gamepad2,
+  Pause,
+  Play,
+  Plus,
+  Save,
+  ShieldCheck,
+  ShieldOff,
+  SlidersHorizontal,
+} from "lucide-react";
 import {
   recoilApi,
   type RecoilGameProfile,
@@ -11,13 +23,16 @@ import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./component
 
 const emptySnapshot: RecoilSnapshot = {
   document: {
-    schema_version: 1,
+    schema_version: 2,
     active_game_id: "generic",
     active_slot: 1,
     games: [],
+    risk_acknowledgement: null,
   },
   running: false,
   active_preset_id: null,
+  risk_acknowledgement_required: true,
+  risk_acknowledgement_version: 1,
 };
 
 export function RecoilScripts() {
@@ -27,6 +42,8 @@ export function RecoilScripts() {
   const [patternText, setPatternText] = useState("0,4");
   const [newGameName, setNewGameName] = useState("");
   const [newGameProcess, setNewGameProcess] = useState("");
+  const [confirmedAccountRisk, setConfirmedAccountRisk] = useState(false);
+  const [confirmedThirdPartyRules, setConfirmedThirdPartyRules] = useState(false);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -86,6 +103,21 @@ export function RecoilScripts() {
     await recoilApi.setSlot(slot);
     setSelectedPresetId("");
     await refresh();
+  };
+
+  const acceptRisk = async () => {
+    if (!confirmedAccountRisk || !confirmedThirdPartyRules) return;
+    setBusy(true);
+    try {
+      await recoilApi.acceptRisk(confirmedAccountRisk, confirmedThirdPartyRules);
+      setConfirmedAccountRisk(false);
+      setConfirmedThirdPartyRules(false);
+      await refresh();
+    } catch (nextError) {
+      setError(String(nextError));
+    } finally {
+      setBusy(false);
+    }
   };
 
   const savePreset = async () => {
@@ -183,17 +215,61 @@ export function RecoilScripts() {
         <StatusPill status={snapshot.running ? "Running" : "Ready"} />
       </div>
 
-      <div className="grid grid-4">
+      <Card>
+        <div className="inline" style={{ alignItems: "flex-start", gap: 12 }}>
+          <AlertTriangle size={19} style={{ flex: "0 0 auto", marginTop: 1 }} />
+          <div>
+            <h2 className="card-title">Automation risk notice</h2>
+            <div className="card-copy">
+              Recoil compensation, macros and automation may violate the rules of games or other third-party software and may result in restrictions, suspensions or permanent account bans. VxClick is a personal hobby/open-source project and is not affiliated with or endorsed by game publishers. You are responsible for checking the rules that apply to your use. VxClick does not provide anti-cheat bypass or detection-evasion functionality.
+            </div>
+          </div>
+        </div>
+      </Card>
+
+      {snapshot.risk_acknowledgement_required && (
+        <Card className="section-gap">
+          <div className="inline" style={{ alignItems: "flex-start", gap: 12 }}>
+            <ShieldCheck size={20} style={{ flex: "0 0 auto", marginTop: 1 }} />
+            <div style={{ width: "100%" }}>
+              <h2 className="card-title">Risk acknowledgement required</h2>
+              <div className="card-copy">
+                Review and acknowledge version {snapshot.risk_acknowledgement_version} before recoil functionality can be armed. This acknowledgement records that the warning was shown; it does not make prohibited use permitted by any third party.
+              </div>
+              <label className="inline section-gap" style={{ alignItems: "flex-start", cursor: "pointer" }}>
+                <input type="checkbox" checked={confirmedAccountRisk} onChange={(event) => setConfirmedAccountRisk(event.target.checked)} />
+                <span className="card-copy">I understand that automation or recoil compensation may cause account restrictions, suspensions or permanent bans.</span>
+              </label>
+              <label className="inline" style={{ alignItems: "flex-start", cursor: "pointer", marginTop: 10 }}>
+                <input type="checkbox" checked={confirmedThirdPartyRules} onChange={(event) => setConfirmedThirdPartyRules(event.target.checked)} />
+                <span className="card-copy">I understand that I am responsible for checking and following the rules, terms and policies of software or services I choose to automate.</span>
+              </label>
+              <div className="quick-actions section-gap">
+                <Button
+                  variant="primary"
+                  disabled={busy || !confirmedAccountRisk || !confirmedThirdPartyRules}
+                  onClick={() => void acceptRisk()}
+                >
+                  <CheckCircle2 size={14} /> I Understand & Accept
+                </Button>
+                <span className="card-copy">Stored locally in VxClick configuration. Material warning changes can require acknowledgement again.</span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      )}
+
+      <div className="grid grid-4 section-gap">
         <MetricCard label="Game profile" value={activeGame?.name ?? "None"} accent icon={<Gamepad2 size={16} color="var(--cyan)" />} />
         <MetricCard label="Active slot" value={snapshot.document.active_slot === 1 ? "Primary" : "Secondary"} icon={<Crosshair size={16} color="var(--accent)" />} />
         <MetricCard label="Scripts" value={(activeGame?.presets.length ?? 0).toString()} icon={<SlidersHorizontal size={16} color="var(--muted)" />} />
-        <MetricCard label="Runtime" value={snapshot.running ? "Armed" : "Stopped"} icon={<ShieldOff size={16} color="var(--muted)" />} />
+        <MetricCard label="Runtime" value={snapshot.running ? "Armed" : snapshot.risk_acknowledgement_required ? "Locked" : "Stopped"} icon={<ShieldOff size={16} color="var(--muted)" />} />
       </div>
 
       <div className="grid grid-2 section-gap">
         <Card>
           <h2 className="card-title">Game profile</h2>
-          <div className="card-copy">Each game has its own process list and completely separate recoil script library.</div>
+          <div className="card-copy">Each game has its own process list and completely separate recoil script library. VxClick ships with a generic profile rather than publisher-specific competitive recoil presets.</div>
           <div className="form-row section-gap">
             <Field label="Active game">
               <select className="select" value={activeGame?.id ?? ""} onChange={(event) => void activateGame(event.target.value)}>
@@ -220,14 +296,18 @@ export function RecoilScripts() {
           <h2 className="card-title">Runtime</h2>
           <div className="card-copy">The recoil worker is separate from the clicker and only moves the cursor while the selected activation condition is true.</div>
           <div className="quick-actions section-gap">
-            <Button variant={snapshot.running ? "danger" : "primary"} disabled={busy || !draft} onClick={() => void toggleRuntime()}>
+            <Button
+              variant={snapshot.running ? "danger" : "primary"}
+              disabled={busy || !draft || (!snapshot.running && snapshot.risk_acknowledgement_required)}
+              onClick={() => void toggleRuntime()}
+            >
               {snapshot.running ? <><Pause size={14} /> Stop recoil</> : <><Play size={14} /> Arm recoil</>}
             </Button>
             <Button onClick={() => void setSlot(1)} variant={snapshot.document.active_slot === 1 ? "primary" : undefined}>Primary</Button>
             <Button onClick={() => void setSlot(2)} variant={snapshot.document.active_slot === 2 ? "primary" : undefined}>Secondary</Button>
           </div>
           <div className="divider" />
-          <div className="card-copy">Game rules differ. The user is responsible for checking whether automation is permitted. VxClick does not include anti-cheat bypass, stealth or detection-evasion behavior.</div>
+          <div className="card-copy">Game rules differ. The user is responsible for checking whether automation is permitted. See TERMS.md, DISCLAIMER.md and LICENSE in the project repository.</div>
         </Card>
       </div>
 
