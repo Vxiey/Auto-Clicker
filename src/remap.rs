@@ -71,7 +71,11 @@ impl RemapEngine {
         Ok(())
     }
 
-    pub fn process(&mut self, input: RemapInput, foreground_process: Option<&str>) -> Vec<RemapDecision> {
+    pub fn process(
+        &mut self,
+        input: RemapInput,
+        foreground_process: Option<&str>,
+    ) -> Vec<RemapDecision> {
         match input {
             RemapInput::KeyDown(key) => {
                 self.pressed_keys.insert(key);
@@ -92,13 +96,15 @@ impl RemapEngine {
             }
 
             let fired = match &binding.trigger {
-                Trigger::Key(key) => matches!(input, RemapInput::KeyDown(candidate) if candidate == *key),
+                Trigger::Key(key) => {
+                    matches!(input, RemapInput::KeyDown(candidate) if candidate == *key)
+                }
                 Trigger::Mouse(button) => {
                     matches!(input, RemapInput::MouseDown(candidate) if candidate == *button)
                 }
                 Trigger::Chord(keys) => {
-                    let satisfied = !keys.is_empty()
-                        && keys.iter().all(|key| self.pressed_keys.contains(key));
+                    let satisfied =
+                        !keys.is_empty() && keys.iter().all(|key| self.pressed_keys.contains(key));
                     let was_active = self.active_chords.contains(&index);
                     if satisfied {
                         self.active_chords.insert(index);
@@ -178,7 +184,8 @@ mod tests {
 
     #[test]
     fn simple_key_mapping_fires_on_key_down() {
-        let binding = RemapBinding::simple("caps-to-f", Trigger::Key(0x14), InputAction::KeyDown(0x46));
+        let binding =
+            RemapBinding::simple("caps-to-f", Trigger::Key(0x14), InputAction::KeyDown(0x46));
         let mut engine = RemapEngine::new(vec![binding]).expect("valid binding");
         let decisions = engine.process(RemapInput::KeyDown(0x14), None);
         assert_eq!(decisions.len(), 1);
@@ -202,14 +209,23 @@ mod tests {
 
     #[test]
     fn process_scope_is_respected() {
-        let mut binding = RemapBinding::simple(
-            "game-only",
-            Trigger::Key(0x41),
-            InputAction::KeyDown(0x42),
-        );
+        let mut binding =
+            RemapBinding::simple("game-only", Trigger::Key(0x41), InputAction::KeyDown(0x42));
         binding.scope = RemapScope::Process("ExampleGame.exe".into());
         let mut engine = RemapEngine::new(vec![binding]).expect("valid binding");
-        assert!(engine.process(RemapInput::KeyDown(0x41), Some("notepad.exe")).is_empty());
-        assert_eq!(engine.process(RemapInput::KeyDown(0x41), Some("C:\\Games\\ExampleGame.exe")).len(), 1);
+        assert!(
+            engine
+                .process(RemapInput::KeyDown(0x41), Some("notepad.exe"))
+                .is_empty()
+        );
+        assert_eq!(
+            engine
+                .process(
+                    RemapInput::KeyDown(0x41),
+                    Some("C:\\Games\\ExampleGame.exe")
+                )
+                .len(),
+            1
+        );
     }
 }
