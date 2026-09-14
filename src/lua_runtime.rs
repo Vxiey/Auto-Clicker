@@ -206,7 +206,10 @@ mod tests {
 
         assert_eq!(actions.len(), 8);
         assert!(matches!(actions[0], InputAction::MouseDown(_)));
-        assert!(matches!(actions[1], InputAction::MouseMoveRelative { dy: 2, .. }));
+        assert!(matches!(
+            actions[1],
+            InputAction::MouseMoveRelative { dy: 2, .. }
+        ));
         assert!(matches!(actions[2], InputAction::WaitMicros(10_000)));
         assert!(matches!(actions[7], InputAction::MouseUp(_)));
     }
