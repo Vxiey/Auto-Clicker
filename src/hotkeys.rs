@@ -102,7 +102,9 @@ impl HotkeyBinding {
             return Err("hotkey cannot be empty".into());
         }
 
-        let only_modifiers = raw_tokens.iter().all(|token| parse_modifier(token).is_some());
+        let only_modifiers = raw_tokens
+            .iter()
+            .all(|token| parse_modifier(token).is_some());
         let mut modifiers = Vec::new();
         let mut mains = Vec::<(u16, String)>::new();
         let mut modifier_groups = HashSet::new();
@@ -119,9 +121,7 @@ impl HotkeyBinding {
 
             let vk = parse_main_key(&token)?;
             if mains.len() >= MAX_MAIN_KEYS {
-                return Err(format!(
-                    "hotkey supports at most {MAX_MAIN_KEYS} main keys"
-                ));
+                return Err(format!("hotkey supports at most {MAX_MAIN_KEYS} main keys"));
             }
             if mains.iter().any(|(existing, _)| *existing == vk) {
                 return Err(format!("duplicate key '{token}' in hotkey '{value}'"));
@@ -136,9 +136,16 @@ impl HotkeyBinding {
         // A generic modifier and a side-specific requirement for the same group
         // would make exact matching ambiguous, so reject that at parse time.
         for kind in modifier_groups {
-            let group: Vec<_> = modifiers.iter().filter(|modifier| modifier.kind == kind).collect();
-            if group.iter().any(|modifier| modifier.side == ModifierSide::Any)
-                && group.iter().any(|modifier| modifier.side != ModifierSide::Any)
+            let group: Vec<_> = modifiers
+                .iter()
+                .filter(|modifier| modifier.kind == kind)
+                .collect();
+            if group
+                .iter()
+                .any(|modifier| modifier.side == ModifierSide::Any)
+                && group
+                    .iter()
+                    .any(|modifier| modifier.side != ModifierSide::Any)
             {
                 return Err(format!(
                     "hotkey '{value}' mixes a generic modifier with a left/right-specific variant"
@@ -236,16 +243,24 @@ impl HotkeyBinding {
                 if requirements.is_empty() && !main_uses_group {
                     return false;
                 }
-                if requirements.iter().any(|item| item.side == ModifierSide::Left)
+                if requirements
+                    .iter()
+                    .any(|item| item.side == ModifierSide::Left)
                     && is_down(right)
-                    && !requirements.iter().any(|item| item.side == ModifierSide::Right)
+                    && !requirements
+                        .iter()
+                        .any(|item| item.side == ModifierSide::Right)
                     && !main_uses_group
                 {
                     return false;
                 }
-                if requirements.iter().any(|item| item.side == ModifierSide::Right)
+                if requirements
+                    .iter()
+                    .any(|item| item.side == ModifierSide::Right)
                     && is_down(left)
-                    && !requirements.iter().any(|item| item.side == ModifierSide::Left)
+                    && !requirements
+                        .iter()
+                        .any(|item| item.side == ModifierSide::Left)
                     && !main_uses_group
                 {
                     return false;
@@ -258,14 +273,18 @@ impl HotkeyBinding {
 
     pub fn contains_virtual_key(&self, vk: u16) -> bool {
         self.main_keys.contains(&vk)
-            || self.modifiers.iter().copied().any(|modifier| match modifier.side {
-                ModifierSide::Any => {
-                    vk == modifier_vk(modifier.kind, ModifierSide::Left)
-                        || vk == modifier_vk(modifier.kind, ModifierSide::Right)
-                        || vk == generic_modifier_vk(modifier.kind)
-                }
-                side => vk == modifier_vk(modifier.kind, side),
-            })
+            || self
+                .modifiers
+                .iter()
+                .copied()
+                .any(|modifier| match modifier.side {
+                    ModifierSide::Any => {
+                        vk == modifier_vk(modifier.kind, ModifierSide::Left)
+                            || vk == modifier_vk(modifier.kind, ModifierSide::Right)
+                            || vk == generic_modifier_vk(modifier.kind)
+                    }
+                    side => vk == modifier_vk(modifier.kind, side),
+                })
     }
 }
 
@@ -310,18 +329,12 @@ fn parse_modifier(token: &str) -> Option<ModifierRequirement> {
         "rightctrl" | "rctrl" | "ctrlright" => (ModifierKind::Ctrl, ModifierSide::Right),
         "alt" | "option" => (ModifierKind::Alt, ModifierSide::Any),
         "leftalt" | "lalt" | "altleft" => (ModifierKind::Alt, ModifierSide::Left),
-        "rightalt" | "ralt" | "altright" | "altgr" => {
-            (ModifierKind::Alt, ModifierSide::Right)
-        }
+        "rightalt" | "ralt" | "altright" | "altgr" => (ModifierKind::Alt, ModifierSide::Right),
         "shift" => (ModifierKind::Shift, ModifierSide::Any),
         "leftshift" | "lshift" | "shiftleft" => (ModifierKind::Shift, ModifierSide::Left),
         "rightshift" | "rshift" | "shiftright" => (ModifierKind::Shift, ModifierSide::Right),
-        "win" | "super" | "meta" | "command" | "cmd" => {
-            (ModifierKind::Super, ModifierSide::Any)
-        }
-        "leftwin" | "lwin" | "leftsuper" | "superleft" => {
-            (ModifierKind::Super, ModifierSide::Left)
-        }
+        "win" | "super" | "meta" | "command" | "cmd" => (ModifierKind::Super, ModifierSide::Any),
+        "leftwin" | "lwin" | "leftsuper" | "superleft" => (ModifierKind::Super, ModifierSide::Left),
         "rightwin" | "rwin" | "rightsuper" | "superright" => {
             (ModifierKind::Super, ModifierSide::Right)
         }
@@ -348,7 +361,10 @@ fn parse_main_key(token: &str) -> Result<u16, String> {
         }
     }
 
-    if let Some(number) = token.strip_prefix('f').and_then(|value| value.parse::<u16>().ok()) {
+    if let Some(number) = token
+        .strip_prefix('f')
+        .and_then(|value| value.parse::<u16>().ok())
+    {
         if (1..=24).contains(&number) {
             return Ok(VK_F1 + number - 1);
         }
@@ -486,9 +502,7 @@ fn format_binding(modifiers: &[ModifierRequirement], mains: &[(u16, String)]) ->
 mod tests {
     use std::collections::HashSet;
 
-    use super::{
-        HotkeyBinding, ModifierMatchMode, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_RCONTROL,
-    };
+    use super::{HotkeyBinding, ModifierMatchMode, VK_LCONTROL, VK_LMENU, VK_LSHIFT, VK_RCONTROL};
 
     #[test]
     fn parses_side_specific_modifier_and_chord() {
