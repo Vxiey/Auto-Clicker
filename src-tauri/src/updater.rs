@@ -1,5 +1,4 @@
 use std::fs;
-use std::io::Read;
 use std::path::PathBuf;
 
 use semver::Version;
@@ -126,12 +125,12 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
         return Err("patch is larger than the 128 MiB safety limit".into());
     }
 
-    let response = github_request(&patch.url)?;
-    let reader = response.into_reader();
-    let mut bytes = Vec::with_capacity((patch.size as usize).min(MAX_PATCH_BYTES));
-    reader
-        .take((MAX_PATCH_BYTES + 1) as u64)
-        .read_to_end(&mut bytes)
+    let mut response = github_request(&patch.url)?;
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit((MAX_PATCH_BYTES + 1) as u64)
+        .read_to_vec()
         .map_err(|error| format!("failed to download patch: {error}"))?;
     if bytes.len() > MAX_PATCH_BYTES {
         return Err("download exceeded the 128 MiB patch safety limit".into());
@@ -245,16 +244,18 @@ fn find_patch(
 }
 
 fn github_get_json<T: for<'de> Deserialize<'de>>(url: &str) -> Result<T, String> {
-    github_request(url)?
-        .into_json::<T>()
+    let mut response = github_request(url)?;
+    response
+        .body_mut()
+        .read_json::<T>()
         .map_err(|error| format!("failed to decode GitHub response: {error}"))
 }
 
-fn github_request(url: &str) -> Result<ureq::Response, String> {
+fn github_request(url: &str) -> Result<ureq::http::Response<ureq::Body>, String> {
     ureq::get(url)
-        .set("User-Agent", concat!("VxClick/", env!("CARGO_PKG_VERSION")))
-        .set("Accept", "application/vnd.github+json")
-        .set("X-GitHub-Api-Version", "2022-11-28")
+        .header("User-Agent", concat!("VxClick/", env!("CARGO_PKG_VERSION")))
+        .header("Accept", "application/vnd.github+json")
+        .header("X-GitHub-Api-Version", "2022-11-28")
         .call()
         .map_err(|error| format!("GitHub request failed: {error}"))
 }
