@@ -152,7 +152,10 @@ pub(crate) fn start_clicker_with_options_inner(
 ) -> Result<(), String> {
     if !cps.is_finite() || !(MIN_CLICKER_CPS..=MAX_CLICKER_CPS).contains(&cps) {
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
-        return Err("CPS must be positive, no slower than one click per week, and no higher than 20,000".into());
+        return Err(
+            "CPS must be positive, no slower than one click per week, and no higher than 20,000"
+                .into(),
+        );
     }
     if !options.randomize_percent.is_finite() || !(0.0..=50.0).contains(&options.randomize_percent)
     {
