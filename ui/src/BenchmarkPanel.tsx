@@ -8,17 +8,29 @@ export function BenchmarkPanel() {
   const [durationMs, setDurationMs] = useState(3000);
   const [button, setButton] = useState("left");
   const [running, setRunning] = useState(false);
+  const [remainingMs, setRemainingMs] = useState(0);
   const [result, setResult] = useState<BenchmarkReport | null>(null);
   const [error, setError] = useState("");
 
   const run = async () => {
+    const requestedDurationMs = Math.max(100, Math.min(30000, durationMs));
+    const startedAt = performance.now();
     setRunning(true);
+    setRemainingMs(requestedDurationMs);
     setError("");
+
+    const countdown = window.setInterval(() => {
+      const elapsed = performance.now() - startedAt;
+      setRemainingMs(Math.max(0, requestedDurationMs - elapsed));
+    }, 50);
+
     try {
-      setResult(await benchmarkApi.run(cps, durationMs, button));
+      setResult(await benchmarkApi.run(cps, requestedDurationMs, button));
     } catch (nextError) {
       setError(String(nextError));
     } finally {
+      window.clearInterval(countdown);
+      setRemainingMs(0);
       setRunning(false);
     }
   };
@@ -28,22 +40,22 @@ export function BenchmarkPanel() {
       <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
         <div>
           <h2 className="card-title">Precision benchmark</h2>
-          <div className="card-copy">Measure generated CPS, interval accuracy, jitter and missed deadlines on this PC.</div>
+          <div className="card-copy">Measure generated CPS, interval accuracy, jitter and missed deadlines on this PC. The test stops automatically at the selected duration.</div>
         </div>
         <Button variant="primary" disabled={running} onClick={() => void run()}>
-          <Play size={14} /> {running ? "Running..." : "Run benchmark"}
+          <Play size={14} /> {running ? `Running ${(remainingMs / 1000).toFixed(1)}s` : "Run benchmark"}
         </Button>
       </div>
 
       <div className="form-row section-gap">
         <Field label="Target CPS">
-          <input className="input" type="number" min="1" max="20000" value={cps} onChange={(event) => setCps(Math.max(1, Math.min(20000, Number(event.target.value))))} />
+          <input className="input" type="number" min="1" max="20000" value={cps} disabled={running} onChange={(event) => setCps(Math.max(1, Math.min(20000, Number(event.target.value))))} />
         </Field>
         <Field label="Duration (ms)">
-          <input className="input" type="number" min="100" max="30000" value={durationMs} onChange={(event) => setDurationMs(Math.max(100, Math.min(30000, Number(event.target.value))))} />
+          <input className="input" type="number" min="100" max="30000" value={durationMs} disabled={running} onChange={(event) => setDurationMs(Math.max(100, Math.min(30000, Number(event.target.value))))} />
         </Field>
         <Field label="Button">
-          <select className="select" value={button} onChange={(event) => setButton(event.target.value)}>
+          <select className="select" value={button} disabled={running} onChange={(event) => setButton(event.target.value)}>
             <option value="left">Left</option>
             <option value="right">Right</option>
             <option value="middle">Middle</option>
