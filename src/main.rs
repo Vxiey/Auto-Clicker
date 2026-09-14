@@ -6,12 +6,9 @@ use auto_clicker_core::engine::MouseButton;
 #[cfg(windows)]
 use auto_clicker_core::platform::windows::{ClickerConfig, PrecisionClicker};
 
-#[cfg(windows)]
-mod ui;
-
 #[cfg(not(windows))]
 fn main() {
-    eprintln!("VxClick v0.1 currently targets Windows only.");
+    eprintln!("VxClick core currently targets Windows only.");
 }
 
 #[cfg(windows)]
@@ -25,19 +22,12 @@ fn main() {
 #[cfg(windows)]
 fn run() -> Result<(), String> {
     let args: Vec<String> = std::env::args().collect();
-    if args.len() == 1 {
-        return ui::run_gui();
-    }
-
-    if args.iter().any(|arg| arg == "--help" || arg == "-h") {
+    if args.len() == 1 || args.iter().any(|arg| arg == "--help" || arg == "-h") {
         print_help();
         return Ok(());
     }
 
     let command = args[1].as_str();
-    if command == "gui" {
-        return ui::run_gui();
-    }
     if command != "benchmark" && command != "click" {
         return Err(format!("unknown command '{command}'"));
     }
@@ -87,11 +77,8 @@ fn value_after<'a>(args: &'a [String], name: &str) -> Option<&'a str> {
 #[cfg(windows)]
 fn print_help() {
     println!(
-        "VxClick v0.1\n\n\
-Usage:\n  VxClick\n  VxClick gui\n  VxClick benchmark --cps <value> --seconds <value> --button <left|right|middle|x1|x2>\n\n\
-Examples:\n  VxClick benchmark --cps 500 --seconds 10\n  VxClick benchmark --cps 2000 --seconds 5 --button left\n\n\
-Launching without arguments opens the native VxClick UI.\n\
-The benchmark reports generated CPS and QPC-based timing jitter.\n\
-Sub-millisecond rates intentionally use an active spin near each absolute deadline."
+        "VxClick core v0.1\n\n\
+Usage:\n  auto-clicker-core benchmark --cps <value> --seconds <value> --button <left|right|middle|x1|x2>\n\n\
+The desktop app lives in src-tauri + ui and uses this crate as its precision engine."
     );
 }
