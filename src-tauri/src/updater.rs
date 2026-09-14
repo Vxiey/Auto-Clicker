@@ -122,7 +122,7 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
     }
 
     let response = github_request(&patch.url)?;
-    let mut reader = response.into_reader();
+    let reader = response.into_reader();
     let mut bytes = Vec::with_capacity((patch.size as usize).min(MAX_PATCH_BYTES));
     reader
         .take((MAX_PATCH_BYTES + 1) as u64)
