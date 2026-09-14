@@ -26,22 +26,49 @@ jobs:
           rm -rf .wiki-publish
           mkdir .wiki-publish
 
-          cp docs/*.md .wiki-publish/
-          rm -f .wiki-publish/README.md
+          # User-facing Wiki pages are the canonical source for Home, guides,
+          # sidebar and footer.
+          cp docs/wiki/*.md .wiki-publish/
+
+          # Publish selected repository documentation with stable Wiki names.
+          cp docs/getting-started.md .wiki-publish/Getting-Started.md
+          cp docs/features.md .wiki-publish/Feature-Status.md
+          cp docs/architecture.md .wiki-publish/Architecture.md
+          cp docs/timing-engine.md .wiki-publish/Timing-Engine.md
+          cp docs/automation-systems.md .wiki-publish/Automation-Systems.md
+          cp docs/development.md .wiki-publish/Development.md
+          cp docs/regression-checklist.md .wiki-publish/Regression-Checklist.md
           cp CHANGELOG.md .wiki-publish/Changelog.md
 
-          if compgen -G "docs/wiki/*.md" > /dev/null; then
-            cp docs/wiki/*.md .wiki-publish/
-          fi
-
-          if [[ ! -f .wiki-publish/Home.md ]]; then
-            cp docs/README.md .wiki-publish/Home.md
-          fi
-
+          # Rewrite repository-document links to canonical GitHub Wiki pages.
           for file in .wiki-publish/*.md; do
-            sed -i -E 's#\]\(([^)]+)\.md\)#](\1)#g' "$file"
-            sed -i 's#](../CHANGELOG)#](Changelog)#g' "$file"
+            sed -i \
+              -e 's#](../README\.md)#](Home)#g' \
+              -e 's#](README\.md)#](Home)#g' \
+              -e 's#](getting-started\.md)#](Getting-Started)#g' \
+              -e 's#](features\.md)#](Feature-Status)#g' \
+              -e 's#](architecture\.md)#](Architecture)#g' \
+              -e 's#](timing-engine\.md)#](Timing-Engine)#g' \
+              -e 's#](automation-systems\.md)#](Automation-Systems)#g' \
+              -e 's#](development\.md)#](Development)#g' \
+              -e 's#](diagnostics\.md)#](Diagnostics)#g' \
+              -e 's#](regression-checklist\.md)#](Regression-Checklist)#g' \
+              -e 's#](../CHANGELOG\.md)#](Changelog)#g' \
+              -e 's#](CHANGELOG\.md)#](Changelog)#g' \
+              "$file"
+
+            # Source-code links should continue to point at the repository,
+            # not at non-existent pages inside the Wiki repository.
+            sed -i \
+              -e "s#](../src/#](https://github.com/${GITHUB_REPOSITORY}/blob/main/src/#g" \
+              -e "s#](../src-tauri/#](https://github.com/${GITHUB_REPOSITORY}/blob/main/src-tauri/#g" \
+              -e "s#](../ui/#](https://github.com/${GITHUB_REPOSITORY}/blob/main/ui/#g" \
+              "$file"
           done
+
+          test -f .wiki-publish/Home.md
+          test -f .wiki-publish/_Sidebar.md
+          test -f .wiki-publish/_Footer.md
 
       - name: Publish to GitHub Wiki
         env:
