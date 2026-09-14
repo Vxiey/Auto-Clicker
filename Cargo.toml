@@ -1,0 +1,17 @@
+[package]
+name = "auto-clicker-core"
+version = "0.1.0"
+edition = "2024"
+description = "High-precision Windows auto clicker, macro and remap engine"
+license = "MIT"
+
+[dependencies]
+
+[target.'cfg(windows)'.dependencies.windows-sys]
+version = "0.61.2"
+features = [
+    "Win32_Foundation",
+    "Win32_System_Performance",
+    "Win32_System_Threading",
+    "Win32_UI_Input_KeyboardAndMouse",
+]
