@@ -9,10 +9,13 @@ use auto_clicker_core::hotkeys::HotkeyBinding;
 use auto_clicker_core::platform::windows::{
     GlobalInputRecorder, HotkeyPhase, RegisteredHotkey, WindowsHotkeyManager, WindowsInput,
 };
-use tauri::{AppHandle, Manager};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::diagnostics::{DiagnosticsState, LogLevel};
-use crate::macros::MacroState;
+use crate::macros::{
+    MacroEventRecord, MacroState, StoredMacro, save_macro, start_macro_recording,
+    stop_macro_recording,
+};
 use crate::profiles::{ProfileState, profiles_snapshot};
 use crate::remaps::RemapState;
 use crate::{
@@ -21,6 +24,8 @@ use crate::{
 
 const CLICKER_HOTKEY_ID: u64 = 1;
 const EMERGENCY_STOP_ID: u64 = 2;
+const MACRO_RECORD_START_ID: u64 = 3;
+const MACRO_RECORD_STOP_ID: u64 = 4;
 const MACRO_HOTKEY_BASE: u64 = 10_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -79,12 +84,77 @@ impl HotkeyRuntime {
                         Err(std::sync::mpsc::RecvTimeoutError::Timeout) => continue,
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     };
+                    let diagnostics = app.state::<DiagnosticsState>();
+
+                    if event.id == MACRO_RECORD_START_ID && event.phase == HotkeyPhase::Pressed {
+                        match start_macro_recording(
+                            true,
+                            None,
+                            "main".into(),
+                            app.state::<MacroState>(),
+                        ) {
+                            Ok(()) => diagnostics.log(
+                                LogLevel::Info,
+                                "macros",
+                                "global macro recording started with F1",
+                            ),
+                            Err(error) if error.contains("already active") => {}
+                            Err(error) => diagnostics.log(
+                                LogLevel::Error,
+                                "macros",
+                                &format!("F1 recording start failed: {error}"),
+                            ),
+                        }
+                        continue;
+                    }
+
+                    if event.id == MACRO_RECORD_STOP_ID && event.phase == HotkeyPhase::Pressed {
+                        match stop_macro_recording(app.state::<MacroState>()) {
+                            Ok(mut recorded) => {
+                                trim_record_stop_hotkey(&mut recorded);
+                                if !recorded.is_empty() {
+                                    let draft = StoredMacro {
+                                        id: String::new(),
+                                        name: "Recorded Macro".into(),
+                                        trigger: String::new(),
+                                        macro_type: "no-repeat".into(),
+                                        repeat_delay_ms: 25,
+                                        speed: 1.0,
+                                        events: recorded,
+                                    };
+                                    match save_macro(draft, app.state::<MacroState>()) {
+                                        Ok(saved) => {
+                                            diagnostics.log(
+                                                LogLevel::Info,
+                                                "macros",
+                                                &format!(
+                                                    "global macro recording stopped with F2 and saved id={}",
+                                                    saved.id
+                                                ),
+                                            );
+                                            let _ = app.emit("macro-recorded", &saved);
+                                        }
+                                        Err(error) => diagnostics.log(
+                                            LogLevel::Error,
+                                            "macros",
+                                            &format!("failed to save F1/F2 recording: {error}"),
+                                        ),
+                                    }
+                                }
+                            }
+                            Err(error) => diagnostics.log(
+                                LogLevel::Error,
+                                "macros",
+                                &format!("F2 recording stop failed: {error}"),
+                            ),
+                        }
+                        continue;
+                    }
+
                     let Some(config) = active.as_ref() else {
                         continue;
                     };
-
                     let engine = app.state::<EngineState>();
-                    let diagnostics = app.state::<DiagnosticsState>();
                     match event.id {
                         CLICKER_HOTKEY_ID => match (config.mode, event.phase) {
                             (ActiveMode::Toggle, HotkeyPhase::Pressed) => {
@@ -191,6 +261,17 @@ impl HotkeyRuntime {
     }
 }
 
+fn trim_record_stop_hotkey(events: &mut Vec<MacroEventRecord>) {
+    if events.last().is_some_and(|event| {
+        event.event_type == "key-down" && event.label.eq_ignore_ascii_case("F2")
+    }) {
+        events.pop();
+        if events.last().is_some_and(|event| event.event_type == "delay") {
+            events.pop();
+        }
+    }
+}
+
 fn start_profile_clicker(
     config: &ActiveProfileConfig,
     engine: &EngineState,
@@ -232,6 +313,14 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
 
     let mut bindings = vec![
         RegisteredHotkey {
+            id: MACRO_RECORD_START_ID,
+            binding: HotkeyBinding::parse("F1")?.with_consume(false),
+        },
+        RegisteredHotkey {
+            id: MACRO_RECORD_STOP_ID,
+            binding: HotkeyBinding::parse("F2")?.with_consume(false),
+        },
+        RegisteredHotkey {
             id: CLICKER_HOTKEY_ID,
             binding: HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true),
         },
@@ -243,7 +332,7 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
     ];
 
     let mut macro_by_hotkey = HashMap::new();
-    for (index, macro_def) in macros.iter().enumerate() {
+    for (index, macro_def) in macros.iter().filter(|item| !item.trigger.trim().is_empty()).enumerate() {
         let id = MACRO_HOTKEY_BASE + index as u64;
         bindings.push(RegisteredHotkey {
             id,
@@ -298,7 +387,7 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         LogLevel::Info,
         "hotkeys",
         &format!(
-            "profile={} start={} emergency={} mode={} randomize={} burst={} macros={} remaps={}",
+            "profile={} start={} emergency={} mode={} randomize={} burst={} macros={} remaps={} recorder=F1/F2",
             profile.name,
             profile.clicker.start_hotkey,
             profile.clicker.emergency_stop_hotkey,
