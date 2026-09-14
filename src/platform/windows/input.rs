@@ -209,8 +209,19 @@ fn keyboard_input(virtual_key: u16, key_up: bool) -> INPUT {
 fn is_extended_virtual_key(virtual_key: u16) -> bool {
     matches!(
         virtual_key,
-        0x21 | 0x22 | 0x23 | 0x24 | 0x25 | 0x26 | 0x27 | 0x28 | 0x2D | 0x2E | 0x6F | 0x90
-            | 0xA3 | 0xA5
+        0x21 | 0x22
+            | 0x23
+            | 0x24
+            | 0x25
+            | 0x26
+            | 0x27
+            | 0x28
+            | 0x2D
+            | 0x2E
+            | 0x6F
+            | 0x90
+            | 0xA3
+            | 0xA5
     )
 }
 
