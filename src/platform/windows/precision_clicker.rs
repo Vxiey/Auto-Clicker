@@ -307,11 +307,16 @@ mod tests {
 
     #[test]
     fn validates_burst_and_position_limits() {
-        let mut config = LiveClickerConfig::default();
-        config.burst_size = 17;
-        assert!(validate_live_config(&config).is_err());
-        config.burst_size = 1;
-        config.positions = vec![(0, 0); 257];
-        assert!(validate_live_config(&config).is_err());
+        let invalid_burst = LiveClickerConfig {
+            burst_size: 17,
+            ..LiveClickerConfig::default()
+        };
+        assert!(validate_live_config(&invalid_burst).is_err());
+
+        let too_many_positions = LiveClickerConfig {
+            positions: vec![(0, 0); 257],
+            ..LiveClickerConfig::default()
+        };
+        assert!(validate_live_config(&too_many_positions).is_err());
     }
 }

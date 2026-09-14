@@ -139,8 +139,7 @@ pub(crate) fn start_clicker_with_options_inner(
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
         return Err("CPS must be between 1 and 20,000".into());
     }
-    if !options.randomize_percent.is_finite()
-        || !(0.0..=50.0).contains(&options.randomize_percent)
+    if !options.randomize_percent.is_finite() || !(0.0..=50.0).contains(&options.randomize_percent)
     {
         return Err("randomization must be between 0 and 50 percent".into());
     }

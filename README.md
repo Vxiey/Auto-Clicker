@@ -18,7 +18,7 @@
 
 VxClick is a clean-room Windows automation project focused on **stable timing, low input latency, low overhead and safe start/stop behavior**. The native core uses Windows APIs for high-resolution timing and input injection, while the desktop application uses Tauri + React for the UI.
 
-> **Development status:** v1.0.0 is in release validation. Native profile-aware hotkeys, QPC macro playback, held-input safety, the stateful remap core and the precision benchmark API/UI are implemented on the release branch. Macro Studio persistence/playback wiring, runtime remap integration and some advanced clicker controls remain explicitly marked as incomplete below rather than being presented as finished.
+> **Release status:** v1.0.0 feature wiring is complete. The release path includes native profile-aware hotkeys, persistent Macro Studio recording/playback, runtime key/mouse remapping, sandboxed Lua automation, randomization/burst/position modes, diagnostics, updater support and Windows release bundles.
 
 ## Highlights
 
@@ -30,10 +30,11 @@ VxClick is a clean-room Windows automation project focused on **stable timing, l
 - Measured CPS, interval, jitter and missed-deadline benchmark telemetry.
 - Low-level Windows keyboard/mouse hooks and profile-aware global hotkeys.
 - Versioned local profiles with foreground-process auto switching.
-- Stateful key/mouse/chord remap rule engine with process scopes.
-- QPC macro playback with cancellation and 0.1x–10x speed scaling.
+- Stateful key/mouse/chord remapping with process scopes and consume/pass-through behavior.
+- Native global macro recording and QPC macro playback with cancellation and 0.1x–10x speed scaling.
 - Central held-input tracking and best-effort emergency release.
-- Sandboxed Lua compiler/runtime core.
+- Sandboxed Lua compiler/runtime wired into the desktop workflow.
+- Randomized intervals, burst clicking, fixed-position and multi-point targeting.
 - Tauri 2 + React 19 desktop UI.
 - Local diagnostics, crash/performance logs and hardened GitHub update checking.
 - Injected-event tagging to prevent self-triggering automation loops.
@@ -51,10 +52,10 @@ VxClick is a clean-room Windows automation project focused on **stable timing, l
 | Diagnostics / logs | ✅ Working | Session, crash and performance logging |
 | Update checker | ✅ Working | Official `Vxiey/VxClick` releases + SHA-256 patch verification/staging |
 | Macro playback core | ✅ Working | QPC absolute-deadline player with cancellation and held-input cleanup |
-| Macro Studio | 🟡 In progress | Editor/recording UI exists; full persistence/playback workflow is not yet wired |
-| Key remapping | 🟡 Core ready | Stateful rule engine exists; desktop/runtime hook execution is not complete |
-| Lua automation | 🟡 Core ready | Lua-to-native-event compiler/runtime exists; desktop workflow is not fully wired |
-| Randomization / burst / position modes | 🟡 UI stage | Controls exist in the UI but are not all passed to the native clicker yet |
+| Macro Studio | ✅ Working | Persistent save/load/delete, native global recording, playback and macro hotkeys |
+| Key remapping | ✅ Working | Native hook execution, key/mouse/chord mappings, process scopes and pass-through control |
+| Lua automation | ✅ Working | Sandboxed Lua validate/run/stop flow compiled into native macro events |
+| Randomization / burst / position modes | ✅ Working | UI controls are passed to and executed by the native Rust clicker |
 
 Full details: **[docs/features.md](docs/features.md)**.
 
@@ -63,27 +64,26 @@ Full details: **[docs/features.md](docs/features.md)**.
 ### Requirements
 
 - Windows 10/11 x64
-- Rust toolchain with the MSVC target
-- Visual Studio Build Tools / C++ build tools required by Rust/Tauri on Windows
-- Node.js 24+ and npm
 - Microsoft Edge WebView2 Runtime
 
-### Desktop app
+### Install VxClick 1.0.0
+
+Download the installer or portable `VxClick.exe` from the **GitHub Release**. The Windows release workflow also publishes a verified build artifact for each release commit.
+
+### Build from source
 
 ```powershell
 git clone https://github.com/Vxiey/VxClick.git
 cd VxClick
 npm install
-npm run tauri:dev
-```
-
-Build a release bundle:
-
-```powershell
 npm run tauri:build
 ```
 
-Until a signed/published v1.0 GitHub Release is available, building from source or using the verified GitHub Actions artifact is the reliable test path.
+For development:
+
+```powershell
+npm run tauri:dev
+```
 
 ### Native core only
 
@@ -103,7 +103,7 @@ The benchmark reports measured output rather than assuming requested CPS equals 
 
 ## Documentation
 
-Project documentation is versioned with the code under [`docs/`](docs/README.md):
+Project documentation is versioned with the code under [`docs/`](docs/README.md) and synchronized to the GitHub Wiki:
 
 - [Documentation home](docs/README.md)
 - [Getting started](docs/getting-started.md)
@@ -111,12 +111,11 @@ Project documentation is versioned with the code under [`docs/`](docs/README.md)
 - [Architecture](docs/architecture.md)
 - [Timing engine](docs/timing-engine.md)
 - [Macros, hotkeys, remapping & Lua](docs/automation-systems.md)
+- [VxClick 1.0 Wiki pages](docs/wiki/Home.md)
 - [Development guide](docs/development.md)
 - [Diagnostics](docs/diagnostics.md)
 - [Regression checklist](docs/regression-checklist.md)
 - [Changelog](CHANGELOG.md)
-
-The repository also includes a workflow that publishes these pages to the real GitHub Wiki after the Wiki has been initialized with its first page.
 
 ## Architecture at a glance
 
@@ -128,7 +127,7 @@ Tauri desktop bridge (src-tauri/)
         │
         ├── profiles / diagnostics / updater / benchmark
         │
-        ├── native profile-aware hotkey runtime
+        ├── native hotkey / macro / remap runtime
         │
         ▼
 Rust automation core (src/)
