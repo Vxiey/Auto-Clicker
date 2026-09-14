@@ -128,6 +128,7 @@ fn start_clicker(
     let stop = Arc::clone(&state.stop);
     let clicks = Arc::clone(&state.clicks);
     let diagnostics = diagnostics.inner().clone();
+    let worker_diagnostics = diagnostics.clone();
     let clicks_at_start = clicks.load(Ordering::Relaxed);
 
     std::thread::Builder::new()
@@ -152,20 +153,20 @@ fn start_clicker(
             };
 
             match result {
-                Ok(()) => diagnostics.log(
+                Ok(()) => worker_diagnostics.log(
                     LogLevel::Info,
                     "clicker",
                     &format!(
                         "stopped elapsed_s={elapsed:.3} clicks={produced} actual_cps={actual:.3}"
                     ),
                 ),
-                Err(error) => diagnostics.log(
+                Err(error) => worker_diagnostics.log(
                     LogLevel::Error,
                     "clicker",
                     &format!("precision worker failed: {error}"),
                 ),
             }
-            diagnostics.performance(
+            worker_diagnostics.performance(
                 "clicker-run",
                 &format!(
                     "target_cps={cps:.3} actual_cps={actual:.3} elapsed_s={elapsed:.3} clicks={produced}"
