@@ -58,37 +58,39 @@ fn mouse_button_flags(button: MouseButton) -> (u32, u32, u32) {
 fn mouse_input(flags: u32, data: u32) -> INPUT {
     let mut input: INPUT = unsafe { zeroed() };
     input.r#type = INPUT_MOUSE;
-    unsafe {
-        input.Anonymous.mi = MOUSEINPUT {
-            dx: 0,
-            dy: 0,
-            mouseData: data,
-            dwFlags: flags,
-            time: 0,
-            dwExtraInfo: INJECTED_INPUT_TAG,
-        };
-    }
+    input.Anonymous.mi = MOUSEINPUT {
+        dx: 0,
+        dy: 0,
+        mouseData: data,
+        dwFlags: flags,
+        time: 0,
+        dwExtraInfo: INJECTED_INPUT_TAG,
+    };
     input
 }
 
 fn keyboard_input(virtual_key: u16, flags: u32) -> INPUT {
     let mut input: INPUT = unsafe { zeroed() };
     input.r#type = INPUT_KEYBOARD;
-    unsafe {
-        input.Anonymous.ki = KEYBDINPUT {
-            wVk: virtual_key,
-            wScan: 0,
-            dwFlags: flags,
-            time: 0,
-            dwExtraInfo: INJECTED_INPUT_TAG,
-        };
-    }
+    input.Anonymous.ki = KEYBDINPUT {
+        wVk: virtual_key,
+        wScan: 0,
+        dwFlags: flags,
+        time: 0,
+        dwExtraInfo: INJECTED_INPUT_TAG,
+    };
     input
 }
 
 #[inline]
 fn send(inputs: &[INPUT]) -> Result<(), String> {
-    let sent = unsafe { SendInput(inputs.len() as u32, inputs.as_ptr(), size_of::<INPUT>() as i32) };
+    let sent = unsafe {
+        SendInput(
+            inputs.len() as u32,
+            inputs.as_ptr(),
+            size_of::<INPUT>() as i32,
+        )
+    };
     if sent == inputs.len() as u32 {
         Ok(())
     } else {
