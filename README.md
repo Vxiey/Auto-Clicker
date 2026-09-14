@@ -1,6 +1,28 @@
-# Auto Clicker
+# VxClick
 
-A clean-room, high-precision Windows auto clicker, key remapper, macro engine, and Lua automation host written in Rust.
+VxClick is a clean-room Windows automation application with a Rust core and a dark Tauri + React desktop UI.
+
+It combines a high-precision auto clicker, global hotkeys, process-aware profiles, keyboard/mouse remapping, macro recording/playback, diagnostics and a sandboxed Lua automation layer.
+
+## VxClick 1.0
+
+Core capabilities in the 1.0 release branch include:
+
+- native Windows `SendInput` for keyboard and mouse output
+- QPC-based absolute-deadline click scheduling with drift correction
+- native `WH_KEYBOARD_LL` / `WH_MOUSE_LL` input hooks
+- global profile-aware toggle, hold and once hotkeys
+- left/right modifier variants, chords and consume/pass-through behavior
+- separation of physical input, external remaps and VxClick-generated input
+- process/game profiles with foreground-process auto switching
+- stateful key/mouse/chord remap engine with per-process scope
+- QPC macro playback with 0.1x–10x speed scaling and cancellation
+- held-input safety release on emergency stop and shutdown
+- sandboxed Lua macro compilation into the same native event model
+- measured CPS/interval/jitter/missed-deadline benchmark reporting
+- session, crash and performance logs with rotation
+- GitHub Releases updater plus SHA-256 verified small patch staging
+- Windows `.exe` / installer build workflow
 
 ## Disclaimer
 
@@ -8,58 +30,69 @@ A clean-room, high-precision Windows auto clicker, key remapper, macro engine, a
 
 VxClick does not include anti-detection or anti-cheat bypass functionality.
 
-## v0.1 core milestone
+## Build the desktop app
 
-The first development branch focuses on the native engine before UI work:
-
-- QPC (`QueryPerformanceCounter`) clock
-- absolute click deadlines to prevent cumulative interval drift
-- hybrid coarse-wait / yield / active-spin scheduling
-- native Windows `SendInput` for mouse and keyboard injection
-- injected-event tagging for future macro/remap loop prevention
-- elevated worker scheduling priority while the precision engine runs
-- generated CPS, interval, jitter and missed-deadline telemetry
-- shared macro/remap data model for keyboard and mouse actions
-- Windows GitHub Actions compile/test/lint gate
-
-## Build
+Requirements: Windows, current Rust stable and Node.js 24+.
 
 ```powershell
-cargo build --release
+npm install
+npm run tauri:build
 ```
 
-## Precision benchmark
+The Tauri build produces the Windows desktop executable and installer bundles under `src-tauri/target/release` and its bundle directories.
+
+## Core precision benchmark
+
+The standalone core benchmark remains available for development checks:
 
 ```powershell
 cargo run --release -- benchmark --cps 500 --seconds 10 --button left
 cargo run --release -- benchmark --cps 2000 --seconds 5 --button left
 ```
 
-The benchmark deliberately reports what was actually generated instead of claiming an arbitrary CPS number.
+VxClick reports measured results rather than presenting requested CPS as achieved CPS. The app benchmark exposes actual CPS, deviation, interval mean/p50/p95/p99, jitter mean/p50/p95/p99/worst and missed deadlines.
 
-## Current architecture
+## Architecture
 
 ```text
 src/
-├─ engine/                  timing statistics + common input types
-├─ macro_engine.rs          macro event/trigger model
-├─ remap.rs                 remap binding model
+├─ engine/                    shared input types + timing statistics
+├─ hotkeys.rs                 parsed hotkey/chord model
+├─ macro_engine.rs            shared macro event model
+├─ lua_runtime.rs             sandboxed Lua → macro actions
+├─ remap.rs                   stateful remap rule engine
 └─ platform/windows/
-   ├─ clock.rs              QPC high-resolution clock
-   ├─ input.rs              SendInput mouse/keyboard backend
-   └─ precision_clicker.rs  absolute-deadline scheduler
+   ├─ clock.rs                QPC high-resolution clock
+   ├─ hooks.rs                global keyboard/mouse hooks
+   ├─ hotkeys.rs              source-aware native hotkey matcher
+   ├─ input.rs                SendInput + held-input safety tracking
+   ├─ macro_player.rs         QPC absolute-deadline macro playback
+   └─ precision_clicker.rs    click scheduler + benchmark engine
+
+src-tauri/src/
+├─ benchmark.rs               desktop precision benchmark API
+├─ diagnostics.rs             rotating local troubleshooting logs
+├─ hotkeys_runtime.rs         profile-aware global runtime
+├─ profiles.rs                persistent process/game profiles
+├─ updater.rs                 GitHub release + patch verification
+└─ main.rs                    Tauri command/runtime integration
+
+ui/src/
+├─ App.tsx                    desktop shell and clicker UI
+├─ MacroStudio.tsx            macro editor/assignment workflow
+├─ ProfilesPanel.tsx          process profile management
+├─ BenchmarkPanel.tsx         measured timing diagnostics
+└─ UpdatePanel.tsx            updates and in-app changelog
 ```
 
-## Next milestones
+## Safety and stability rules
 
-1. High-resolution waitable timer for the coarse phase of longer intervals.
-2. Global hotkey manager and emergency stop.
-3. Low-level keyboard/mouse capture with self-injected event filtering.
-4. Macro recorder/player using the same precision scheduler.
-5. Quick Remap: key ↔ key, key ↔ mouse, mouse ↔ mouse.
-6. Per-app profiles and process rules.
-7. Sandboxed Lua automation host using the same input and scheduler core.
-8. Lightweight DPI-aware Windows UI.
-9. Reproducible performance benchmark suite for 1–10,000+ CPS.
+VxClick tags its own injected input so its hooks do not recursively trigger themselves. Emergency Stop performs a best-effort release of synthetic keys/buttons still held by VxClick. Raw typed text and macro recorder streams are not written into diagnostic logs by default.
 
-The v0.1 engine has a temporary 20,000 CPS safety cap until real Windows benchmark results are collected.
+The current safety cap is 20,000 requested CPS. Whether a target application actually observes input at that rate depends on Windows scheduling and how the target consumes input.
+
+## Repository
+
+Project: `Vxiey/VxClick`
+
+See `CHANGELOG.md` for the full version history from 0.1.0 through 1.0.0.
