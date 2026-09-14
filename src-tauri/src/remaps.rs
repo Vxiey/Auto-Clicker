@@ -99,7 +99,10 @@ impl RemapState {
             .map_err(|error| format!("failed to write {}: {error}", self.path.display()))
     }
 
-    pub fn runtime_bindings(&self, foreground_process: Option<&str>) -> Result<Vec<RuntimeRemap>, String> {
+    pub fn runtime_bindings(
+        &self,
+        foreground_process: Option<&str>,
+    ) -> Result<Vec<RuntimeRemap>, String> {
         let foreground = foreground_process.map(normalize_process_name);
         let mappings = self
             .document
@@ -108,7 +111,11 @@ impl RemapState {
             .mappings
             .clone();
         let mut result = Vec::new();
-        for (index, mapping) in mappings.into_iter().filter(|mapping| mapping.enabled).enumerate() {
+        for (index, mapping) in mappings
+            .into_iter()
+            .filter(|mapping| mapping.enabled)
+            .enumerate()
+        {
             if !mapping.process.trim().is_empty()
                 && foreground.as_deref() != Some(normalize_process_name(&mapping.process).as_str())
             {
@@ -155,7 +162,10 @@ pub fn remaps_snapshot(state: State<'_, RemapState>) -> Result<RemapDocument, St
 }
 
 #[tauri::command]
-pub fn save_remap(mut mapping: StoredRemap, state: State<'_, RemapState>) -> Result<StoredRemap, String> {
+pub fn save_remap(
+    mut mapping: StoredRemap,
+    state: State<'_, RemapState>,
+) -> Result<StoredRemap, String> {
     if mapping.id.trim().is_empty() {
         mapping.id = make_remap_id(&mapping.name);
     }
@@ -166,7 +176,11 @@ pub fn save_remap(mut mapping: StoredRemap, state: State<'_, RemapState>) -> Res
             .document
             .lock()
             .map_err(|_| "remap document mutex poisoned".to_string())?;
-        if let Some(existing) = document.mappings.iter_mut().find(|item| item.id == mapping.id) {
+        if let Some(existing) = document
+            .mappings
+            .iter_mut()
+            .find(|item| item.id == mapping.id)
+        {
             *existing = mapping.clone();
         } else {
             document.mappings.push(mapping.clone());
@@ -194,7 +208,10 @@ pub fn delete_remap(id: String, state: State<'_, RemapState>) -> Result<(), Stri
 
 fn execute_action(action: &str, phase: HotkeyPhase, macros: &MacroState) -> Result<(), String> {
     let action = action.trim();
-    if let Some(macro_id) = action.strip_prefix("Macro:").or_else(|| action.strip_prefix("macro:")) {
+    if let Some(macro_id) = action
+        .strip_prefix("Macro:")
+        .or_else(|| action.strip_prefix("macro:"))
+    {
         return macros.handle_hotkey(macro_id.trim(), phase);
     }
 
@@ -209,7 +226,9 @@ fn execute_action(action: &str, phase: HotkeyPhase, macros: &MacroState) -> Resu
         .split('+')
         .map(str::trim)
         .filter(|part| !part.is_empty())
-        .map(|part| key_name_to_vk(part).ok_or_else(|| format!("unsupported remap action key '{part}'")))
+        .map(|part| {
+            key_name_to_vk(part).ok_or_else(|| format!("unsupported remap action key '{part}'"))
+        })
         .collect::<Result<Vec<_>, _>>()?;
     if keys.is_empty() {
         return Err("remap action cannot be empty".into());
@@ -251,7 +270,12 @@ fn validate_remap(mapping: &StoredRemap) -> Result<(), String> {
     if parse_mouse_action(&mapping.action).is_some() {
         return Ok(());
     }
-    for key in mapping.action.split('+').map(str::trim).filter(|part| !part.is_empty()) {
+    for key in mapping
+        .action
+        .split('+')
+        .map(str::trim)
+        .filter(|part| !part.is_empty())
+    {
         if key_name_to_vk(key).is_none() {
             return Err(format!("unsupported remap action key '{key}'"));
         }
@@ -278,7 +302,10 @@ fn key_name_to_vk(label: &str) -> Option<u16> {
             return Some(byte as u16);
         }
     }
-    if let Some(number) = upper.strip_prefix('F').and_then(|value| value.parse::<u16>().ok()) {
+    if let Some(number) = upper
+        .strip_prefix('F')
+        .and_then(|value| value.parse::<u16>().ok())
+    {
         if (1..=24).contains(&number) {
             return Some(0x70 + number - 1);
         }
@@ -322,7 +349,13 @@ fn normalize_optional_process(value: &str) -> String {
 fn make_remap_id(name: &str) -> String {
     let slug = name
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|part| !part.is_empty())

@@ -171,7 +171,9 @@ impl MacroState {
 
         if session.record_delays {
             if let Some(last) = session.last_ticks {
-                let elapsed = self.clock.ticks_to_micros(input.qpc_ticks.saturating_sub(last));
+                let elapsed = self
+                    .clock
+                    .ticks_to_micros(input.qpc_ticks.saturating_sub(last));
                 let delay_ms = session
                     .standard_delay_ms
                     .unwrap_or_else(|| (elapsed.max(0.0) / 1_000.0).round() as u64);
@@ -206,7 +208,9 @@ impl MacroState {
             .ok_or_else(|| format!("unknown macro '{macro_id}'"))?;
 
         match (macro_def.macro_type.as_str(), phase) {
-            ("repeat-hold", HotkeyPhase::Pressed) => self.start_macro_worker(macro_def, true, "main"),
+            ("repeat-hold", HotkeyPhase::Pressed) => {
+                self.start_macro_worker(macro_def, true, "main")
+            }
             ("repeat-hold", HotkeyPhase::Released) => self.stop_playback(),
             ("toggle", HotkeyPhase::Pressed) => {
                 if self.is_playing(macro_id) {
@@ -380,7 +384,11 @@ fn actions_for_lane(macro_def: &StoredMacro, lane: &str) -> Result<Vec<InputActi
 fn event_to_actions(event: &MacroEventRecord) -> Result<Vec<InputAction>, String> {
     match event.event_type.as_str() {
         "delay" => Ok(vec![InputAction::WaitMicros(
-            event.delay_ms.unwrap_or(0).min(60_000).saturating_mul(1_000),
+            event
+                .delay_ms
+                .unwrap_or(0)
+                .min(60_000)
+                .saturating_mul(1_000),
         )]),
         "key-down" => key_actions(&event.label, true),
         "key-up" => key_actions(&event.label, false),
@@ -471,7 +479,10 @@ fn key_name_to_vk(label: &str) -> Option<u16> {
             return Some(byte as u16);
         }
     }
-    if let Some(number) = upper.strip_prefix('F').and_then(|value| value.parse::<u16>().ok()) {
+    if let Some(number) = upper
+        .strip_prefix('F')
+        .and_then(|value| value.parse::<u16>().ok())
+    {
         if (1..=24).contains(&number) {
             return Some(0x70 + number - 1);
         }
@@ -552,7 +563,13 @@ fn validate_macro(macro_def: &StoredMacro) -> Result<(), String> {
 fn make_macro_id(name: &str) -> String {
     let slug = name
         .chars()
-        .map(|ch| if ch.is_ascii_alphanumeric() { ch.to_ascii_lowercase() } else { '-' })
+        .map(|ch| {
+            if ch.is_ascii_alphanumeric() {
+                ch.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
         .collect::<String>()
         .split('-')
         .filter(|part| !part.is_empty())
@@ -598,7 +615,10 @@ pub fn macros_snapshot(state: State<'_, MacroState>) -> Result<MacroSnapshot, St
 }
 
 #[tauri::command]
-pub fn save_macro(mut macro_def: StoredMacro, state: State<'_, MacroState>) -> Result<StoredMacro, String> {
+pub fn save_macro(
+    mut macro_def: StoredMacro,
+    state: State<'_, MacroState>,
+) -> Result<StoredMacro, String> {
     if macro_def.id.trim().is_empty() {
         macro_def.id = make_macro_id(&macro_def.name);
     }
@@ -608,7 +628,11 @@ pub fn save_macro(mut macro_def: StoredMacro, state: State<'_, MacroState>) -> R
             .document
             .lock()
             .map_err(|_| "macro document mutex poisoned".to_string())?;
-        if let Some(existing) = document.macros.iter_mut().find(|item| item.id == macro_def.id) {
+        if let Some(existing) = document
+            .macros
+            .iter_mut()
+            .find(|item| item.id == macro_def.id)
+        {
             *existing = macro_def.clone();
         } else {
             document.macros.push(macro_def.clone());
@@ -671,7 +695,11 @@ pub fn start_macro_recording(
         active: true,
         record_delays,
         standard_delay_ms,
-        lane: if lane.trim().is_empty() { default_lane() } else { lane },
+        lane: if lane.trim().is_empty() {
+            default_lane()
+        } else {
+            lane
+        },
         last_ticks: None,
         next_id: 1,
         events: Vec::new(),

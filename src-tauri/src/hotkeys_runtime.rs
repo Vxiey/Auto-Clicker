@@ -90,11 +90,9 @@ impl HotkeyRuntime {
                             (ActiveMode::Toggle, HotkeyPhase::Pressed) => {
                                 if engine.running.load(Ordering::Acquire) {
                                     stop_clicker_inner(&engine, &diagnostics);
-                                } else if let Err(error) = start_profile_clicker(
-                                    config,
-                                    &engine,
-                                    &diagnostics,
-                                ) {
+                                } else if let Err(error) =
+                                    start_profile_clicker(config, &engine, &diagnostics)
+                                {
                                     diagnostics.log(
                                         LogLevel::Error,
                                         "hotkeys",
@@ -239,7 +237,8 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         },
         RegisteredHotkey {
             id: EMERGENCY_STOP_ID,
-            binding: HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?.with_consume(true),
+            binding: HotkeyBinding::parse(&profile.clicker.emergency_stop_hotkey)?
+                .with_consume(true),
         },
     ];
 
