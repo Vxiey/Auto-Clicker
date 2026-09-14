@@ -102,21 +102,16 @@ impl HotkeyBinding {
             return Err("hotkey cannot be empty".into());
         }
 
-        let only_modifiers = raw_tokens
-            .iter()
-            .all(|token| parse_modifier(token).is_some());
         let mut modifiers = Vec::new();
         let mut mains = Vec::<(u16, String)>::new();
         let mut modifier_groups = HashSet::new();
 
         for token in raw_tokens {
             if let Some(requirement) = parse_modifier(&token) {
-                if only_modifiers || mains.is_empty() {
-                    validate_modifier_requirement(&modifiers, requirement, value)?;
-                    modifiers.push(requirement);
-                    modifier_groups.insert(requirement.kind);
-                    continue;
-                }
+                validate_modifier_requirement(&modifiers, requirement, value)?;
+                modifiers.push(requirement);
+                modifier_groups.insert(requirement.kind);
+                continue;
             }
 
             let vk = parse_main_key(&token)?;
@@ -364,19 +359,17 @@ fn parse_main_key(token: &str) -> Result<u16, String> {
     if let Some(number) = token
         .strip_prefix('f')
         .and_then(|value| value.parse::<u16>().ok())
+        && (1..=24).contains(&number)
     {
-        if (1..=24).contains(&number) {
-            return Ok(VK_F1 + number - 1);
-        }
+        return Ok(VK_F1 + number - 1);
     }
 
     if let Some(number) = token
         .strip_prefix("numpad")
         .and_then(|value| value.parse::<u16>().ok())
+        && number <= 9
     {
-        if number <= 9 {
-            return Ok(VK_NUMPAD0 + number);
-        }
+        return Ok(VK_NUMPAD0 + number);
     }
 
     let vk = match token {
@@ -509,6 +502,14 @@ mod tests {
         let binding = HotkeyBinding::parse("LeftCtrl + Shift + B + A").unwrap();
         assert_eq!(binding.canonical(), "leftctrl+shift+a+b");
         assert_eq!(binding.main_keys().len(), 2);
+    }
+
+    #[test]
+    fn modifier_order_is_canonicalized() {
+        let key_first = HotkeyBinding::parse("A + Shift").unwrap();
+        let modifier_first = HotkeyBinding::parse("Shift + A").unwrap();
+        assert_eq!(key_first.canonical(), "shift+a");
+        assert_eq!(key_first.canonical(), modifier_first.canonical());
     }
 
     #[test]
