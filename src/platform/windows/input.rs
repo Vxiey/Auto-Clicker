@@ -2,8 +2,9 @@ use std::mem::{size_of, zeroed};
 
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
     INPUT, INPUT_KEYBOARD, INPUT_MOUSE, KEYBDINPUT, KEYEVENTF_KEYUP, MOUSEEVENTF_LEFTDOWN,
-    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_RIGHTDOWN,
-    MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_XDOWN, MOUSEEVENTF_XUP, MOUSEINPUT, SendInput,
+    MOUSEEVENTF_LEFTUP, MOUSEEVENTF_MIDDLEDOWN, MOUSEEVENTF_MIDDLEUP, MOUSEEVENTF_MOVE,
+    MOUSEEVENTF_RIGHTDOWN, MOUSEEVENTF_RIGHTUP, MOUSEEVENTF_WHEEL, MOUSEEVENTF_XDOWN,
+    MOUSEEVENTF_XUP, MOUSEINPUT, SendInput,
 };
 
 use crate::engine::MouseButton;
@@ -19,20 +20,33 @@ impl WindowsInput {
     #[inline]
     pub fn click(&self, button: MouseButton) -> Result<(), String> {
         let (down_flags, up_flags, data) = mouse_button_flags(button);
-        let inputs = [mouse_input(down_flags, data), mouse_input(up_flags, data)];
+        let inputs = [
+            mouse_input(0, 0, down_flags, data),
+            mouse_input(0, 0, up_flags, data),
+        ];
         send(&inputs)
     }
 
     #[inline]
     pub fn mouse_down(&self, button: MouseButton) -> Result<(), String> {
         let (flags, _, data) = mouse_button_flags(button);
-        send(&[mouse_input(flags, data)])
+        send(&[mouse_input(0, 0, flags, data)])
     }
 
     #[inline]
     pub fn mouse_up(&self, button: MouseButton) -> Result<(), String> {
         let (_, flags, data) = mouse_button_flags(button);
-        send(&[mouse_input(flags, data)])
+        send(&[mouse_input(0, 0, flags, data)])
+    }
+
+    #[inline]
+    pub fn move_relative(&self, dx: i32, dy: i32) -> Result<(), String> {
+        send(&[mouse_input(dx, dy, MOUSEEVENTF_MOVE, 0)])
+    }
+
+    #[inline]
+    pub fn wheel(&self, delta: i32) -> Result<(), String> {
+        send(&[mouse_input(0, 0, MOUSEEVENTF_WHEEL, delta as u32)])
     }
 
     #[inline]
@@ -56,12 +70,12 @@ fn mouse_button_flags(button: MouseButton) -> (u32, u32, u32) {
     }
 }
 
-fn mouse_input(flags: u32, data: u32) -> INPUT {
+fn mouse_input(dx: i32, dy: i32, flags: u32, data: u32) -> INPUT {
     let mut input: INPUT = unsafe { zeroed() };
     input.r#type = INPUT_MOUSE;
     input.Anonymous.mi = MOUSEINPUT {
-        dx: 0,
-        dy: 0,
+        dx,
+        dy,
         mouseData: data,
         dwFlags: flags,
         time: 0,
