@@ -11,7 +11,8 @@ use tauri::{AppHandle, Manager, State};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_LBUTTON, VK_RBUTTON};
 use windows_sys::Win32::UI::WindowsAndMessaging::GetAsyncKeyState;
 
-const RECOIL_SCHEMA_VERSION: u32 = 1;
+const RECOIL_SCHEMA_VERSION: u32 = 2;
+const RECOIL_RISK_ACK_VERSION: u32 = 1;
 const MAX_GAMES: usize = 64;
 const MAX_PRESETS_PER_GAME: usize = 256;
 const MAX_PATTERN_STEPS: usize = 512;
@@ -104,11 +105,20 @@ impl RecoilGameProfile {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct RecoilRiskAcceptance {
+    pub version: u32,
+    pub accepted_at_unix: u64,
+    pub app_version: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RecoilDocument {
     pub schema_version: u32,
     pub active_game_id: String,
     pub active_slot: u8,
     pub games: Vec<RecoilGameProfile>,
+    #[serde(default)]
+    pub risk_acknowledgement: Option<RecoilRiskAcceptance>,
 }
 
 impl Default for RecoilDocument {
@@ -118,6 +128,7 @@ impl Default for RecoilDocument {
             active_game_id: "generic".into(),
             active_slot: 1,
             games: vec![RecoilGameProfile::default_game()],
+            risk_acknowledgement: None,
         }
     }
 }
@@ -127,6 +138,8 @@ pub struct RecoilSnapshot {
     pub document: RecoilDocument,
     pub running: bool,
     pub active_preset_id: Option<String>,
+    pub risk_acknowledgement_required: bool,
+    pub risk_acknowledgement_version: u32,
 }
 
 #[derive(Clone)]
@@ -184,18 +197,22 @@ impl RecoilState {
 
 #[tauri::command]
 pub fn recoil_snapshot(state: State<'_, RecoilState>) -> Result<RecoilSnapshot, String> {
+    let document = state
+        .document
+        .lock()
+        .map_err(|_| "recoil state mutex poisoned".to_string())?
+        .clone();
+    let risk_acknowledgement_required = !risk_acknowledgement_is_current(&document);
     Ok(RecoilSnapshot {
-        document: state
-            .document
-            .lock()
-            .map_err(|_| "recoil state mutex poisoned".to_string())?
-            .clone(),
+        document,
         running: state.running.load(Ordering::Acquire),
         active_preset_id: state
             .active_preset_id
             .lock()
             .map_err(|_| "recoil active preset mutex poisoned".to_string())?
             .clone(),
+        risk_acknowledgement_required,
+        risk_acknowledgement_version: RECOIL_RISK_ACK_VERSION,
     })
 }
 
@@ -336,16 +353,55 @@ pub fn save_recoil_preset(
 }
 
 #[tauri::command]
-pub fn recoil_start(state: State<'_, RecoilState>) -> Result<(), String> {
+pub fn recoil_start(
+    confirmed_account_risk: Option<bool>,
+    confirmed_third_party_rules: Option<bool>,
+    accept_only: Option<bool>,
+    state: State<'_, RecoilState>,
+) -> Result<(), String> {
+    let needs_acknowledgement = {
+        let document = state
+            .document
+            .lock()
+            .map_err(|_| "recoil state mutex poisoned".to_string())?;
+        !risk_acknowledgement_is_current(&document)
+    };
+
+    if needs_acknowledgement {
+        if confirmed_account_risk != Some(true) || confirmed_third_party_rules != Some(true) {
+            return Err(
+                "recoil risk acknowledgement is required before recoil can be armed".into(),
+            );
+        }
+        {
+            let mut document = state
+                .document
+                .lock()
+                .map_err(|_| "recoil state mutex poisoned".to_string())?;
+            document.risk_acknowledgement = Some(RecoilRiskAcceptance {
+                version: RECOIL_RISK_ACK_VERSION,
+                accepted_at_unix: SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_secs(),
+                app_version: env!("CARGO_PKG_VERSION").to_string(),
+            });
+        }
+        state.persist()?;
+    }
+
+    if accept_only.unwrap_or(false) {
+        return Ok(());
+    }
+
+    let preset = active_preset(&state)?;
+    if !preset.enabled {
+        return Err("the active recoil preset is disabled".into());
+    }
     if state.running.swap(true, Ordering::AcqRel) {
         return Ok(());
     }
     state.stop.store(false, Ordering::Release);
-    let preset = active_preset(&state)?;
-    if !preset.enabled {
-        state.running.store(false, Ordering::Release);
-        return Err("the active recoil preset is disabled".into());
-    }
     let stop = Arc::clone(&state.stop);
     let running = Arc::clone(&state.running);
     let active_preset_id = Arc::clone(&state.active_preset_id);
@@ -394,6 +450,13 @@ fn active_preset(state: &RecoilState) -> Result<RecoilPreset, String> {
         .find(|preset| &preset.id == preset_id)
         .cloned()
         .ok_or_else(|| "active recoil preset is missing".to_string())
+}
+
+fn risk_acknowledgement_is_current(document: &RecoilDocument) -> bool {
+    document
+        .risk_acknowledgement
+        .as_ref()
+        .is_some_and(|entry| entry.version == RECOIL_RISK_ACK_VERSION)
 }
 
 fn run_recoil_worker(preset: &RecoilPreset, stop: &AtomicBool) -> Result<(), String> {
