@@ -42,6 +42,9 @@ use serde::Serialize;
 use tauri::{Manager, State};
 use updater::{check_for_updates, stage_patch};
 
+const MIN_CLICKER_CPS: f64 = 1.0 / 604_800.0; // one click per week
+const MAX_CLICKER_CPS: f64 = 20_000.0;
+
 struct SampleState {
     at: Instant,
     clicks: u64,
@@ -147,9 +150,9 @@ pub(crate) fn start_clicker_with_options_inner(
     state: &EngineState,
     diagnostics: &DiagnosticsState,
 ) -> Result<(), String> {
-    if !cps.is_finite() || !(1.0..=20_000.0).contains(&cps) {
+    if !cps.is_finite() || !(MIN_CLICKER_CPS..=MAX_CLICKER_CPS).contains(&cps) {
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
-        return Err("CPS must be between 1 and 20,000".into());
+        return Err("CPS must be positive, no slower than one click per week, and no higher than 20,000".into());
     }
     if !options.randomize_percent.is_finite() || !(0.0..=50.0).contains(&options.randomize_percent)
     {
@@ -185,7 +188,7 @@ pub(crate) fn start_clicker_with_options_inner(
         LogLevel::Info,
         "clicker",
         &format!(
-            "starting target_cps={cps:.3} button={button:?} randomize={:.1}% burst={} positions={}",
+            "starting target_cps={cps:.6} button={button:?} randomize={:.1}% burst={} positions={}",
             options.randomize_percent,
             options.burst_size,
             options.positions.len()
@@ -228,7 +231,7 @@ pub(crate) fn start_clicker_with_options_inner(
                     LogLevel::Info,
                     "clicker",
                     &format!(
-                        "stopped elapsed_s={elapsed:.3} clicks={produced} actual_cps={actual:.3}"
+                        "stopped elapsed_s={elapsed:.3} clicks={produced} actual_cps={actual:.6}"
                     ),
                 ),
                 Err(error) => worker_diagnostics.log(
@@ -240,7 +243,7 @@ pub(crate) fn start_clicker_with_options_inner(
             worker_diagnostics.performance(
                 "clicker-run",
                 &format!(
-                    "target_cps={cps:.3} actual_cps={actual:.3} elapsed_s={elapsed:.3} clicks={produced}"
+                    "target_cps={cps:.6} actual_cps={actual:.6} elapsed_s={elapsed:.3} clicks={produced}"
                 ),
             );
             running.store(false, Ordering::Release);
