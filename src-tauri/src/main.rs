@@ -84,7 +84,9 @@ fn start_clicker(cps: f64, button: String, state: State<'_, EngineState>) -> Res
     }
 
     state.stop.store(false, Ordering::Release);
-    state.target_cps_bits.store(cps.to_bits(), Ordering::Release);
+    state
+        .target_cps_bits
+        .store(cps.to_bits(), Ordering::Release);
     if let Ok(mut sample) = state.sample.lock() {
         sample.at = Instant::now();
         sample.clicks = state.clicks.load(Ordering::Relaxed);
@@ -126,7 +128,11 @@ fn stop_clicker(state: State<'_, EngineState>) {
 fn main() {
     tauri::Builder::default()
         .manage(EngineState::default())
-        .invoke_handler(tauri::generate_handler![engine_status, start_clicker, stop_clicker])
+        .invoke_handler(tauri::generate_handler![
+            engine_status,
+            start_clicker,
+            stop_clicker
+        ])
         .run(tauri::generate_context!())
         .expect("error while running VxClick");
 }
