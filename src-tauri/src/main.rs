@@ -5,6 +5,7 @@ mod diagnostics;
 mod hotkeys_runtime;
 mod macros;
 mod profiles;
+mod recoil;
 mod remaps;
 mod updater;
 
@@ -26,6 +27,10 @@ use macros::{
 use profiles::{
     ProfileState, activate_profile, create_profile, delete_profile, foreground_process,
     profiles_snapshot, save_profile, set_profile_auto_switch,
+};
+use recoil::{
+    RecoilState, activate_recoil_game, create_recoil_game, recoil_snapshot, recoil_start,
+    recoil_stop, save_recoil_game, save_recoil_preset, set_recoil_slot,
 };
 use remaps::{RemapState, delete_remap, remaps_snapshot, save_remap};
 use serde::Serialize;
@@ -361,6 +366,12 @@ fn main() {
             })?;
             app.manage(remaps);
 
+            let recoil = RecoilState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "recoil", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(recoil);
+
             let hotkeys = HotkeyRuntime::start(app.handle().clone()).map_err(|error| {
                 diagnostics.log(LogLevel::Error, "hotkeys", &error);
                 std::io::Error::other(error)
@@ -397,6 +408,14 @@ fn main() {
             remaps_snapshot,
             save_remap,
             delete_remap,
+            recoil_snapshot,
+            create_recoil_game,
+            save_recoil_game,
+            activate_recoil_game,
+            set_recoil_slot,
+            save_recoil_preset,
+            recoil_start,
+            recoil_stop,
             check_for_updates,
             stage_patch
         ])
