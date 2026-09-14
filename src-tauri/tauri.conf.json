@@ -26,6 +26,12 @@
         "backgroundColor": "#071225"
       }
     ],
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/icon.ico",
+      "tooltip": "VxClick",
+      "showMenuOnLeftClick": false
+    },
     "security": {
       "csp": null
     }
@@ -33,6 +39,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico", "icons/icon.png"]
+    "icon": ["icons/icon.ico"]
   }
 }

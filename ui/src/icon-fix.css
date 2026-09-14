@@ -1,0 +1,4 @@
+.brand-mark {
+  content: url("/app-icon.svg");
+  object-fit: contain;
+}

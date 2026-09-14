@@ -85,22 +85,33 @@ impl PrecisionClicker {
         let interval_ticks = frequency / config.cps;
         let run_ticks = config.duration.as_secs_f64() * frequency;
         let start = self.clock.now_ticks();
-        let stop_at = start as f64 + run_ticks;
+        let stop_at = start.saturating_add(run_ticks.ceil() as i64);
         let mut deadline = start as f64;
         let expected_clicks = (config.cps * config.duration.as_secs_f64()).ceil() as usize;
         let mut click_timestamps_us = Vec::with_capacity(expected_clicks.min(2_000_000));
         let mut deadline_errors_us = Vec::with_capacity(expected_clicks.min(2_000_000));
         let mut missed_deadlines = 0_u64;
 
-        while deadline < stop_at {
+        while deadline < stop_at as f64 {
+            // The benchmark is duration-bounded by the real monotonic clock, not
+            // only by the ideal schedule. This prevents a delayed worker from
+            // extending the test while trying to catch up overdue clicks.
+            if self.clock.now_ticks() >= stop_at {
+                break;
+            }
+
             wait_until(
                 &self.clock,
-                deadline.round() as i64,
+                (deadline.round() as i64).min(stop_at),
                 config.coarse_wait_threshold_us,
                 config.spin_window_us,
             );
 
             let before_send = self.clock.now_ticks();
+            if before_send >= stop_at {
+                break;
+            }
+
             let late_ticks = before_send - deadline.round() as i64;
             let late_us = self.clock.ticks_to_micros(late_ticks);
             if late_us > (1_000_000.0 / config.cps) {
@@ -113,6 +124,12 @@ impl PrecisionClicker {
             deadline_errors_us.push(late_us);
 
             deadline += interval_ticks;
+
+            // Do not emit catch-up clicks after a long scheduler stall. Re-anchor
+            // to the actual clock while preserving the requested interval.
+            if after_send as f64 > deadline + interval_ticks * 4.0 {
+                deadline = after_send as f64 + interval_ticks;
+            }
         }
 
         let end = self.clock.now_ticks();
