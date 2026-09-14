@@ -110,7 +110,8 @@ export function RecoilScripts() {
     const id = `preset-${Date.now()}`;
     const preset: RecoilPreset = {
       id,
-      name: slot === 1 ? "New Primary" : "New Secondary",
+      name: slot === 1 ? "New Primary Script" : "New Secondary Script",
+      character_name: "",
       weapon_name: "Custom",
       slot,
       enabled: true,
@@ -177,7 +178,7 @@ export function RecoilScripts() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Recoil Scripts</h1>
-          <div className="page-subtitle">Multi-game recoil profiles with separate primary/secondary weapon scripts.</div>
+          <div className="page-subtitle">Create and save multi-game recoil scripts with separate game, character/operator and weapon metadata.</div>
         </div>
         <StatusPill status={snapshot.running ? "Running" : "Ready"} />
       </div>
@@ -185,14 +186,14 @@ export function RecoilScripts() {
       <div className="grid grid-4">
         <MetricCard label="Game profile" value={activeGame?.name ?? "None"} accent icon={<Gamepad2 size={16} color="var(--cyan)" />} />
         <MetricCard label="Active slot" value={snapshot.document.active_slot === 1 ? "Primary" : "Secondary"} icon={<Crosshair size={16} color="var(--accent)" />} />
-        <MetricCard label="Presets" value={(activeGame?.presets.length ?? 0).toString()} icon={<SlidersHorizontal size={16} color="var(--muted)" />} />
+        <MetricCard label="Scripts" value={(activeGame?.presets.length ?? 0).toString()} icon={<SlidersHorizontal size={16} color="var(--muted)" />} />
         <MetricCard label="Runtime" value={snapshot.running ? "Armed" : "Stopped"} icon={<ShieldOff size={16} color="var(--muted)" />} />
       </div>
 
       <div className="grid grid-2 section-gap">
         <Card>
           <h2 className="card-title">Game profile</h2>
-          <div className="card-copy">Profiles are intentionally game-agnostic. Add process names now or later for per-game switching.</div>
+          <div className="card-copy">Each game has its own process list and completely separate recoil script library.</div>
           <div className="form-row section-gap">
             <Field label="Active game">
               <select className="select" value={activeGame?.id ?? ""} onChange={(event) => void activateGame(event.target.value)}>
@@ -226,20 +227,21 @@ export function RecoilScripts() {
             <Button onClick={() => void setSlot(2)} variant={snapshot.document.active_slot === 2 ? "primary" : undefined}>Secondary</Button>
           </div>
           <div className="divider" />
-          <div className="card-copy">No anti-cheat bypass, process injection, stealth or anti-detection behavior is part of this system.</div>
+          <div className="card-copy">Game rules differ. The user is responsible for checking whether automation is permitted. VxClick does not include anti-cheat bypass, stealth or detection-evasion behavior.</div>
         </Card>
       </div>
 
       <div className="grid grid-2 section-gap">
         <Card>
           <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
-            <div><h2 className="card-title">Presets</h2><div className="card-copy">{snapshot.document.active_slot === 1 ? "Primary" : "Secondary"} scripts for {activeGame?.name ?? "the active game"}.</div></div>
-            <Button onClick={() => void addPreset()}><Plus size={14} /> New preset</Button>
+            <div><h2 className="card-title">Recoil scripts</h2><div className="card-copy">{snapshot.document.active_slot === 1 ? "Primary" : "Secondary"} scripts for {activeGame?.name ?? "the active game"}.</div></div>
+            <Button onClick={() => void addPreset()}><Plus size={14} /> New script</Button>
           </div>
           <div className="section-gap" style={{ display: "grid", gap: 8 }}>
             {slotPresets.map((preset) => (
               <button key={preset.id} className={`nav-button ${preset.id === selectedPresetId ? "active" : ""}`} onClick={() => selectPreset(preset.id)}>
-                <Crosshair size={15} /><span>{preset.name} · {preset.weapon_name} · {preset.rpm.toFixed(0)} RPM</span>
+                <Crosshair size={15} />
+                <span>{preset.name} · {preset.character_name ? `${preset.character_name} · ` : ""}{preset.weapon_name} · {preset.rpm.toFixed(0)} RPM</span>
               </button>
             ))}
           </div>
@@ -247,13 +249,16 @@ export function RecoilScripts() {
 
         <Card>
           <h2 className="card-title">Script editor</h2>
-          {!draft ? <div className="card-copy section-gap">Select a preset to edit.</div> : <>
+          {!draft ? <div className="card-copy section-gap">Select a script to edit.</div> : <>
             <div className="form-row section-gap">
-              <Field label="Preset name"><input className="input" value={draft.name} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field>
-              <Field label="Weapon / label"><input className="input" value={draft.weapon_name} onChange={(event) => setDraft({ ...draft, weapon_name: event.target.value })} /></Field>
+              <Field label="Script name"><input className="input" value={draft.name} maxLength={64} onChange={(event) => setDraft({ ...draft, name: event.target.value })} /></Field>
+              <Field label="Character / Operator (optional)"><input className="input" value={draft.character_name} maxLength={64} onChange={(event) => setDraft({ ...draft, character_name: event.target.value })} placeholder="e.g. Operator name" /></Field>
             </div>
             <div className="form-row section-gap">
+              <Field label="Weapon"><input className="input" value={draft.weapon_name} maxLength={64} onChange={(event) => setDraft({ ...draft, weapon_name: event.target.value })} placeholder="e.g. Rifle A" /></Field>
               <Field label="RPM"><input className="input" type="number" min="30" max="3000" value={draft.rpm} onChange={(event) => setDraft({ ...draft, rpm: Number(event.target.value) })} /></Field>
+            </div>
+            <div className="form-row section-gap">
               <Field label="Activation">
                 <select className="select" value={draft.activation_mode} onChange={(event) => setDraft({ ...draft, activation_mode: event.target.value as RecoilPreset["activation_mode"] })}>
                   <option value="ads-fire">ADS + Fire</option>
@@ -261,6 +266,7 @@ export function RecoilScripts() {
                   <option value="always">Always while armed</option>
                 </select>
               </Field>
+              <Field label="Activation hotkey"><input className="input" value={draft.activation_hotkey} onChange={(event) => setDraft({ ...draft, activation_hotkey: event.target.value })} /></Field>
             </div>
             <div className="form-row section-gap">
               <Field label={`Vertical · ${draft.vertical.toFixed(2)}×`}><input className="range" type="range" min="0" max="10" step="0.05" value={draft.vertical} onChange={(event) => setDraft({ ...draft, vertical: Number(event.target.value) })} /></Field>
@@ -268,8 +274,8 @@ export function RecoilScripts() {
             </div>
             <div className="section-gap"><Field label="Pattern · X,Y per shot"><textarea className="input" style={{ minHeight: 120, resize: "vertical" }} value={patternText} onChange={(event) => setPatternText(event.target.value)} placeholder={"0,4\n0,5\n1,5\n-1,6"} /></Field></div>
             <div className="inline section-gap" style={{ justifyContent: "space-between", width: "100%" }}>
-              <div className="inline"><Toggle value={draft.enabled} onChange={(enabled) => setDraft({ ...draft, enabled })} /><span className="card-copy">Preset enabled</span></div>
-              <Button variant="primary" disabled={busy} onClick={() => void savePreset()}><Save size={14} /> Save preset</Button>
+              <div className="inline"><Toggle value={draft.enabled} onChange={(enabled) => setDraft({ ...draft, enabled })} /><span className="card-copy">Script enabled</span></div>
+              <Button variant="primary" disabled={busy} onClick={() => void savePreset()}><Save size={14} /> Save script</Button>
             </div>
           </>}
         </Card>
