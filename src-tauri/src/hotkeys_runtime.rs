@@ -3,6 +3,7 @@ use std::sync::{Arc, Mutex};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
 
+use auto_clicker_core::engine::MouseButton;
 use auto_clicker_core::hotkeys::HotkeyBinding;
 use auto_clicker_core::platform::windows::{
     GlobalInputRecorder, HotkeyPhase, RegisteredHotkey, WindowsHotkeyManager,
@@ -66,7 +67,7 @@ impl HotkeyRuntime {
                                     .button
                                     .lock()
                                     .map(|button| *button)
-                                    .unwrap_or_default();
+                                    .unwrap_or(MouseButton::Left);
                                 if let Err(error) =
                                     start_clicker_inner(cps, button, &engine, &diagnostics)
                                 {
