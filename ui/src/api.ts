@@ -70,6 +70,48 @@ export type RemapDocument = {
   mappings: StoredRemap[];
 };
 
+export type RecoilStep = {
+  x: number;
+  y: number;
+};
+
+export type RecoilPreset = {
+  id: string;
+  name: string;
+  weapon_name: string;
+  slot: 1 | 2;
+  enabled: boolean;
+  vertical: number;
+  horizontal: number;
+  rpm: number;
+  activation_mode: "ads-fire" | "fire" | "always";
+  activation_hotkey: string;
+  pattern: RecoilStep[];
+};
+
+export type RecoilGameProfile = {
+  id: string;
+  name: string;
+  process_names: string[];
+  auto_switch: boolean;
+  active_primary_id: string;
+  active_secondary_id: string;
+  presets: RecoilPreset[];
+};
+
+export type RecoilDocument = {
+  schema_version: number;
+  active_game_id: string;
+  active_slot: 1 | 2;
+  games: RecoilGameProfile[];
+};
+
+export type RecoilSnapshot = {
+  document: RecoilDocument;
+  running: boolean;
+  active_preset_id: string | null;
+};
+
 export type PatchAsset = {
   from_version: string;
   to_version: string;
@@ -162,6 +204,19 @@ export const remapApi = {
   snapshot: () => invoke<RemapDocument>("remaps_snapshot"),
   save: (mapping: StoredRemap) => invoke<StoredRemap>("save_remap", { mapping }),
   remove: (id: string) => invoke<void>("delete_remap", { id }),
+};
+
+export const recoilApi = {
+  snapshot: () => invoke<RecoilSnapshot>("recoil_snapshot"),
+  createGame: (name: string, processName?: string) =>
+    invoke<RecoilGameProfile>("create_recoil_game", { name, processName: processName || null }),
+  saveGame: (game: RecoilGameProfile) => invoke<RecoilGameProfile>("save_recoil_game", { game }),
+  activateGame: (id: string) => invoke<void>("activate_recoil_game", { id }),
+  setSlot: (slot: 1 | 2) => invoke<void>("set_recoil_slot", { slot }),
+  savePreset: (gameId: string, preset: RecoilPreset) =>
+    invoke<RecoilPreset>("save_recoil_preset", { gameId, preset }),
+  start: () => invoke<void>("recoil_start"),
+  stop: () => invoke<void>("recoil_stop"),
 };
 
 export const updaterApi = {
