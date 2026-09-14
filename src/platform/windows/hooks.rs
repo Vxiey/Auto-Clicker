@@ -303,9 +303,9 @@ fn publish(source: CapturedInputSource, kind: CapturedInputKind) {
 }
 
 fn clear_sender() {
-    if let Some(slot) = EVENT_SENDER.get() {
-        if let Ok(mut sender) = slot.lock() {
-            *sender = None;
-        }
+    if let Some(slot) = EVENT_SENDER.get()
+        && let Ok(mut sender) = slot.lock()
+    {
+        *sender = None;
     }
 }
