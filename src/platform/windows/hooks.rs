@@ -18,6 +18,9 @@ use windows_sys::Win32::UI::WindowsAndMessaging::{
 };
 
 use crate::engine::MouseButton;
+use crate::platform::windows::hotkeys::{
+    handle_transition, mouse_button_virtual_key, normalize_keyboard_vk,
+};
 use crate::platform::windows::input::INJECTED_INPUT_TAG;
 
 const EVENT_QUEUE_CAPACITY: usize = 16_384;
@@ -178,27 +181,39 @@ unsafe extern "system" fn keyboard_hook(code: i32, wparam: usize, lparam: isize)
     if code >= 0 {
         let data = unsafe { &*(lparam as *const KBDLLHOOKSTRUCT) };
         if data.dwExtraInfo != INJECTED_INPUT_TAG {
-            let source = if (data.flags & LLKHF_INJECTED) != 0 {
-                CapturedInputSource::ExternalInjected
-            } else {
+            let physical = (data.flags & LLKHF_INJECTED) == 0;
+            let source = if physical {
                 CapturedInputSource::Physical
+            } else {
+                CapturedInputSource::ExternalInjected
             };
             let extended = (data.flags & LLKHF_EXTENDED) != 0;
-            let kind = match wparam as u32 {
-                WM_KEYDOWN | WM_SYSKEYDOWN => Some(CapturedInputKind::KeyDown {
-                    virtual_key: data.vkCode as u16,
-                    scan_code: data.scanCode as u16,
-                    extended,
-                }),
-                WM_KEYUP | WM_SYSKEYUP => Some(CapturedInputKind::KeyUp {
-                    virtual_key: data.vkCode as u16,
-                    scan_code: data.scanCode as u16,
-                    extended,
-                }),
+            let virtual_key = normalize_keyboard_vk(data.vkCode as u16, data.scanCode as u16, extended);
+            let transition = match wparam as u32 {
+                WM_KEYDOWN | WM_SYSKEYDOWN => Some((
+                    true,
+                    CapturedInputKind::KeyDown {
+                        virtual_key,
+                        scan_code: data.scanCode as u16,
+                        extended,
+                    },
+                )),
+                WM_KEYUP | WM_SYSKEYUP => Some((
+                    false,
+                    CapturedInputKind::KeyUp {
+                        virtual_key,
+                        scan_code: data.scanCode as u16,
+                        extended,
+                    },
+                )),
                 _ => None,
             };
-            if let Some(kind) = kind {
+            if let Some((down, kind)) = transition {
+                let consume = handle_transition(virtual_key, down, physical);
                 publish(source, kind);
+                if consume {
+                    return 1;
+                }
             }
         }
     }
@@ -209,10 +224,11 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: usize, lparam: isize) ->
     if code >= 0 {
         let data = unsafe { &*(lparam as *const MSLLHOOKSTRUCT) };
         if data.dwExtraInfo != INJECTED_INPUT_TAG {
-            let source = if (data.flags & LLMHF_INJECTED) != 0 {
-                CapturedInputSource::ExternalInjected
-            } else {
+            let physical = (data.flags & LLMHF_INJECTED) == 0;
+            let source = if physical {
                 CapturedInputSource::Physical
+            } else {
+                CapturedInputSource::ExternalInjected
             };
             let xbutton = (data.mouseData >> 16) & 0xffff;
             let kind = match wparam as u32 {
@@ -236,7 +252,19 @@ unsafe extern "system" fn mouse_hook(code: i32, wparam: usize, lparam: isize) ->
                 _ => None,
             };
             if let Some(kind) = kind {
+                let consume = match kind {
+                    CapturedInputKind::MouseDown(button) => {
+                        handle_transition(mouse_button_virtual_key(button), true, physical)
+                    }
+                    CapturedInputKind::MouseUp(button) => {
+                        handle_transition(mouse_button_virtual_key(button), false, physical)
+                    }
+                    _ => false,
+                };
                 publish(source, kind);
+                if consume {
+                    return 1;
+                }
             }
         }
     }
