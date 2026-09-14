@@ -1,4 +1,6 @@
+mod benchmark;
 mod diagnostics;
+mod hotkeys_runtime;
 mod profiles;
 mod updater;
 
@@ -8,9 +10,11 @@ use std::time::Instant;
 
 use auto_clicker_core::engine::MouseButton;
 use auto_clicker_core::platform::windows::{LiveClickerConfig, PrecisionClicker};
+use benchmark::run_precision_benchmark;
 use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
+use hotkeys_runtime::HotkeyRuntime;
 use profiles::{
     ProfileState, activate_profile, create_profile, delete_profile, foreground_process,
     profiles_snapshot, save_profile, set_profile_auto_switch,
@@ -25,11 +29,12 @@ struct SampleState {
     actual_cps: f64,
 }
 
-struct EngineState {
+pub(crate) struct EngineState {
     running: Arc<AtomicBool>,
     stop: Arc<AtomicBool>,
     clicks: Arc<AtomicU64>,
     target_cps_bits: AtomicU64,
+    button: Mutex<MouseButton>,
     sample: Mutex<SampleState>,
 }
 
@@ -40,6 +45,7 @@ impl Default for EngineState {
             stop: Arc::new(AtomicBool::new(false)),
             clicks: Arc::new(AtomicU64::new(0)),
             target_cps_bits: AtomicU64::new(250.0_f64.to_bits()),
+            button: Mutex::new(MouseButton::Left),
             sample: Mutex::new(SampleState {
                 at: Instant::now(),
                 clicks: 0,
@@ -83,21 +89,16 @@ fn engine_status(state: State<'_, EngineState>) -> EngineStatus {
     }
 }
 
-#[tauri::command]
-fn start_clicker(
+pub(crate) fn start_clicker_inner(
     cps: f64,
-    button: String,
-    state: State<'_, EngineState>,
-    diagnostics: State<'_, DiagnosticsState>,
+    button: MouseButton,
+    state: &EngineState,
+    diagnostics: &DiagnosticsState,
 ) -> Result<(), String> {
     if !cps.is_finite() || !(1.0..=20_000.0).contains(&cps) {
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
         return Err("CPS must be between 1 and 20,000".into());
     }
-    let button = MouseButton::parse(&button).ok_or_else(|| {
-        diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid mouse button");
-        "button must be left, right, middle, x1, or x2".to_string()
-    })?;
 
     if state.running.swap(true, Ordering::AcqRel) {
         diagnostics.log(
@@ -112,6 +113,9 @@ fn start_clicker(
     state
         .target_cps_bits
         .store(cps.to_bits(), Ordering::Release);
+    if let Ok(mut configured_button) = state.button.lock() {
+        *configured_button = button;
+    }
     if let Ok(mut sample) = state.sample.lock() {
         sample.at = Instant::now();
         sample.clicks = state.clicks.load(Ordering::Relaxed);
@@ -127,7 +131,7 @@ fn start_clicker(
     let running = Arc::clone(&state.running);
     let stop = Arc::clone(&state.stop);
     let clicks = Arc::clone(&state.clicks);
-    let diagnostics = diagnostics.inner().clone();
+    let diagnostics = diagnostics.clone();
     let worker_diagnostics = diagnostics.clone();
     let clicks_at_start = clicks.load(Ordering::Relaxed);
 
@@ -187,10 +191,28 @@ fn start_clicker(
     Ok(())
 }
 
-#[tauri::command]
-fn stop_clicker(state: State<'_, EngineState>, diagnostics: State<'_, DiagnosticsState>) {
+pub(crate) fn stop_clicker_inner(state: &EngineState, diagnostics: &DiagnosticsState) {
     diagnostics.log(LogLevel::Info, "clicker", "stop requested");
     state.stop.store(true, Ordering::Release);
+}
+
+#[tauri::command]
+fn start_clicker(
+    cps: f64,
+    button: String,
+    state: State<'_, EngineState>,
+    diagnostics: State<'_, DiagnosticsState>,
+) -> Result<(), String> {
+    let button = MouseButton::parse(&button).ok_or_else(|| {
+        diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid mouse button");
+        "button must be left, right, middle, x1, or x2".to_string()
+    })?;
+    start_clicker_inner(cps, button, &state, &diagnostics)
+}
+
+#[tauri::command]
+fn stop_clicker(state: State<'_, EngineState>, diagnostics: State<'_, DiagnosticsState>) {
+    stop_clicker_inner(&state, &diagnostics);
 }
 
 fn main() {
@@ -215,6 +237,13 @@ fn main() {
             };
             profiles.start_watcher(app.handle().clone());
             app.manage(profiles);
+
+            let hotkeys = HotkeyRuntime::start(app.handle().clone()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "hotkeys", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(hotkeys);
+
             diagnostics.log(LogLevel::Info, "app", "Tauri setup complete");
             Ok(())
         })
@@ -222,6 +251,7 @@ fn main() {
             engine_status,
             start_clicker,
             stop_clicker,
+            run_precision_benchmark,
             diagnostics_snapshot,
             diagnostics_client_log,
             clear_diagnostics,

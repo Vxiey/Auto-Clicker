@@ -76,6 +76,25 @@ export type DiagnosticsSnapshot = {
   performance_log_bytes: number;
 };
 
+export type SampleReport = {
+  mean_us: number;
+  p50_us: number;
+  p95_us: number;
+  p99_us: number;
+  worst_us: number;
+};
+
+export type BenchmarkReport = {
+  target_cps: number;
+  actual_cps: number;
+  deviation_percent: number;
+  elapsed_seconds: number;
+  clicks: number;
+  missed_deadlines: number;
+  interval: SampleReport;
+  jitter: SampleReport;
+};
+
 export const profilesApi = {
   snapshot: () => invoke<ProfilesSnapshot>("profiles_snapshot"),
   create: (name: string, processName?: string) =>
@@ -97,4 +116,9 @@ export const diagnosticsApi = {
   clear: () => invoke<void>("clear_diagnostics"),
   log: (level: "debug" | "info" | "warn" | "error", target: string, message: string) =>
     invoke<void>("diagnostics_client_log", { level, target, message }),
+};
+
+export const benchmarkApi = {
+  run: (cps: number, durationMs: number, button: string) =>
+    invoke<BenchmarkReport>("run_precision_benchmark", { cps, durationMs, button }),
 };

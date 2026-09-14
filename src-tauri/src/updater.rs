@@ -7,9 +7,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 
-const REPO: &str = "Vxiey/Auto-Clicker";
-const RELEASES_API: &str = "https://api.github.com/repos/Vxiey/Auto-Clicker/releases/latest";
-const RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/Vxiey/Auto-Clicker/releases/download/";
+const REPO: &str = "Vxiey/VxClick";
+const RELEASES_API: &str = "https://api.github.com/repos/Vxiey/VxClick/releases/latest";
+const RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/Vxiey/VxClick/releases/download/";
 const MAX_PATCH_BYTES: usize = 128 * 1024 * 1024;
 
 #[derive(Debug, Deserialize)]
@@ -81,10 +81,14 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
         .map_err(|error| format!("invalid release version '{}': {error}", release.tag_name))?;
 
     let full_release = choose_windows_asset(&release.assets);
-    let patch = find_patch(&release.assets, &current, &latest).unwrap_or_else(|error| {
-        eprintln!("update patch manifest ignored: {error}");
+    let patch = if latest > current {
+        find_patch(&release.assets, &current, &latest).unwrap_or_else(|error| {
+            eprintln!("update patch manifest ignored: {error}");
+            None
+        })
+    } else {
         None
-    });
+    };
 
     Ok(UpdateInfo {
         repository: REPO,
@@ -112,10 +116,11 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
             "patch is for version {from}, but this installation is {current}"
         ));
     }
-    if to <= current {
-        return Err("patch target must be newer than the installed version".into());
+    if to <= from {
+        return Err("patch target must be newer than the source version".into());
     }
     validate_patch_url(&patch.url)?;
+    validate_patch_format(&patch.format)?;
     validate_sha256(&patch.sha256)?;
     if patch.size as usize > MAX_PATCH_BYTES {
         return Err("patch is larger than the 128 MiB safety limit".into());
@@ -167,6 +172,9 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
 fn choose_windows_asset(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
     let priority = |name: &str| {
         let lower = name.to_ascii_lowercase();
+        if !lower.contains("vxclick") {
+            return 99;
+        }
         if lower.ends_with(".msi") {
             0
         } else if lower.ends_with(".exe") {
@@ -180,7 +188,9 @@ fn choose_windows_asset(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
 
     assets
         .iter()
-        .filter(|asset| priority(&asset.name) < 99)
+        .filter(|asset| {
+            priority(&asset.name) < 99 && validate_patch_url(&asset.browser_download_url).is_ok()
+        })
         .min_by_key(|asset| priority(&asset.name))
         .map(|asset| FullReleaseAsset {
             name: asset.name.clone(),
@@ -203,6 +213,7 @@ fn find_patch(
         return Ok(None);
     };
 
+    validate_patch_url(&manifest_asset.browser_download_url)?;
     let manifest: PatchManifest = github_get_json(&manifest_asset.browser_download_url)?;
     if manifest.schema_version != 1 {
         return Err(format!(
@@ -211,11 +222,26 @@ fn find_patch(
         ));
     }
 
-    Ok(manifest.patches.into_iter().find(|patch| {
-        let from = Version::parse(patch.from_version.trim_start_matches('v'));
-        let to = Version::parse(patch.to_version.trim_start_matches('v'));
-        matches!((from, to), (Ok(from), Ok(to)) if &from == current && &to == latest)
-    }))
+    for patch in manifest.patches {
+        let from = match Version::parse(patch.from_version.trim_start_matches('v')) {
+            Ok(version) => version,
+            Err(_) => continue,
+        };
+        let to = match Version::parse(patch.to_version.trim_start_matches('v')) {
+            Ok(version) => version,
+            Err(_) => continue,
+        };
+        if &from == current && &to == latest {
+            validate_patch_url(&patch.url)?;
+            validate_patch_format(&patch.format)?;
+            validate_sha256(&patch.sha256)?;
+            if patch.size as usize > MAX_PATCH_BYTES {
+                return Err("patch manifest exceeds the 128 MiB safety limit".into());
+            }
+            return Ok(Some(patch));
+        }
+    }
+    Ok(None)
 }
 
 fn github_get_json<T: for<'de> Deserialize<'de>>(url: &str) -> Result<T, String> {
@@ -235,9 +261,16 @@ fn github_request(url: &str) -> Result<ureq::Response, String> {
 
 fn validate_patch_url(url: &str) -> Result<(), String> {
     if !url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
-        return Err("patch URL must point to the official VxClick GitHub release area".into());
+        return Err("update URL must point to the official VxClick GitHub release area".into());
     }
     Ok(())
+}
+
+fn validate_patch_format(format: &str) -> Result<(), String> {
+    match format.to_ascii_lowercase().as_str() {
+        "bsdiff" | "zstd" => Ok(()),
+        _ => Err("unsupported patch format; expected bsdiff or zstd".into()),
+    }
 }
 
 fn validate_sha256(value: &str) -> Result<(), String> {
@@ -254,4 +287,44 @@ fn safe_patch_path(dir: &std::path::Path, from: &Version, to: &Version, format: 
         _ => "patch",
     };
     dir.join(format!("vxclick-{from}-to-{to}.{extension}"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{GitHubAsset, choose_windows_asset, validate_patch_format, validate_patch_url};
+
+    #[test]
+    fn rejects_unknown_patch_format() {
+        assert!(validate_patch_format("zip").is_err());
+        assert!(validate_patch_format("bsdiff").is_ok());
+        assert!(validate_patch_format("zstd").is_ok());
+    }
+
+    #[test]
+    fn rejects_non_official_update_urls() {
+        assert!(validate_patch_url("https://example.com/VxClick.exe").is_err());
+        assert!(
+            validate_patch_url(
+                "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick.exe"
+            )
+            .is_ok()
+        );
+    }
+
+    #[test]
+    fn full_release_ignores_unrelated_executables() {
+        let assets = vec![
+            GitHubAsset {
+                name: "unrelated.exe".into(),
+                browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/unrelated.exe".into(),
+                size: 1,
+            },
+            GitHubAsset {
+                name: "VxClick_1.0.0_x64_en-US.msi".into(),
+                browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick_1.0.0_x64_en-US.msi".into(),
+                size: 2,
+            },
+        ];
+        assert_eq!(choose_windows_asset(&assets).expect("asset").size, 2);
+    }
 }

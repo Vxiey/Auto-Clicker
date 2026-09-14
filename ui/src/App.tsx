@@ -20,10 +20,12 @@ import {
   X,
 } from "lucide-react";
 import type { Profile } from "./api";
+import { BenchmarkPanel } from "./BenchmarkPanel";
 import { MacroStudio } from "./MacroStudio";
 import { ProfilesPanel } from "./ProfilesPanel";
 import { UpdatePanel } from "./UpdatePanel";
 import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./components";
+import { APP_VERSION } from "./version";
 
 type Page = "dashboard" | "clicker" | "macros" | "remap" | "profiles" | "settings";
 type EngineStatus = { running: boolean; clicks: number; actual_cps: number; target_cps: number };
@@ -122,7 +124,7 @@ export default function App() {
         </nav>
         <div className="sidebar-footer">
           <div className="inline"><span className={`status-dot ${status.running ? "status-running" : "status-ready"}`} style={{ backgroundColor: "currentColor" }} />{status.running ? "Engine running" : "Engine ready"}</div>
-          <div style={{ marginTop: 7, opacity: 0.7 }}>v0.2.0</div>
+          <div style={{ marginTop: 7, opacity: 0.7 }}>v{APP_VERSION}</div>
         </div>
       </aside>
 
@@ -173,7 +175,7 @@ function Dashboard({ status, cps, activeProfile, onStart, onStop, open }: { stat
       <Card><h2 className="card-title">Quick controls</h2><div className="card-copy">Target {cps.toLocaleString()} CPS using the Rust precision engine.</div><div className="quick-actions"><Button variant="primary" disabled={status.running} onClick={onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!status.running} onClick={onStop}><Square size={13} /> Stop</Button><Button onClick={() => open("macros")}><Sparkles size={14} /> Macro Studio</Button><Button onClick={() => open("profiles")}><UserRoundCog size={14} /> Profiles</Button></div></Card>
       <Card><h2 className="card-title">Precision engine</h2><div className="card-copy">Absolute deadlines, native SendInput and sub-millisecond scheduling targets.</div><div className="quick-actions"><span className="profile-chip"><Bolt size={13} /> High performance</span><span className="profile-chip"><Sparkles size={13} /> Sub-ms ready</span></div></Card>
     </div>
-    <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Activity</h2><div className="card-copy">Live diagnostics and timing history will appear here.</div><div className="divider" /><div className="inline" style={{ justifyContent: "space-between" }}><span className="card-copy">Click engine</span><span className="status-pill status-ready">Ready</span></div></Card><TrayPreview running={status.running} activeProfile={activeProfile} /></div>
+    <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Activity</h2><div className="card-copy">Live engine status and timing diagnostics are available from Settings.</div><div className="divider" /><div className="inline" style={{ justifyContent: "space-between" }}><span className="card-copy">Click engine</span><span className={`status-pill ${status.running ? "status-running" : "status-ready"}`}>{status.running ? "Running" : "Ready"}</span></div></Card><TrayPreview running={status.running} activeProfile={activeProfile} /></div>
   </div>;
 }
 
@@ -194,7 +196,7 @@ function Remap() {
 }
 
 function SettingsPage({ tray, setTray, startup, setStartup, diagnostics, setDiagnostics }: { tray: boolean; setTray: (value: boolean) => void; startup: boolean; setStartup: (value: boolean) => void; diagnostics: boolean; setDiagnostics: (value: boolean) => void }) {
-  return <div className="page"><PageHeader title="Settings" subtitle="Windows behavior, updates, diagnostics and precision tuning." /><div className="grid grid-2"><Card><h2 className="card-title">Windows behavior</h2><SettingRow title="Start with Windows" copy="Launch VxClick automatically after sign-in." value={startup} onChange={setStartup} /><SettingRow title="Minimize to tray" copy="Keep VxClick available without leaving the main window open." value={tray} onChange={setTray} /><SettingRow title="Diagnostics" copy="Store timing and engine diagnostics locally." value={diagnostics} onChange={setDiagnostics} /></Card><UpdatePanel /></div><div className="grid grid-2 section-gap"><Card><h2 className="card-title">Precision tuning</h2><div className="card-copy">Advanced scheduler values stay tucked away from normal users.</div><div className="form-row section-gap"><Field label="Spin window"><input className="input" defaultValue="350 µs" /></Field><Field label="Coarse wait"><input className="input" defaultValue="2000 µs" /></Field></div></Card><Card><h2 className="card-title">Theme</h2><div className="card-copy">VxClick Dark · #071225 background · #168BFF blue · #26E0FF cyan.</div><div className="quick-actions"><span className="profile-chip"><span className="status-dot" style={{ background: "#168BFF" }} /> Accent Blue</span><span className="profile-chip"><span className="status-dot" style={{ background: "#26E0FF" }} /> Accent Cyan</span></div></Card></div></div>;
+  return <div className="page"><PageHeader title="Settings" subtitle="Windows behavior, updates, diagnostics and precision tuning." /><div className="grid grid-2"><Card><h2 className="card-title">Windows behavior</h2><SettingRow title="Start with Windows" copy="Launch VxClick automatically after sign-in." value={startup} onChange={setStartup} /><SettingRow title="Minimize to tray" copy="Keep VxClick available without leaving the main window open." value={tray} onChange={setTray} /><SettingRow title="Diagnostics" copy="Store timing and engine diagnostics locally." value={diagnostics} onChange={setDiagnostics} /></Card><UpdatePanel /></div><div className="section-gap"><BenchmarkPanel /></div><div className="grid grid-2 section-gap"><Card><h2 className="card-title">Precision tuning</h2><div className="card-copy">Advanced scheduler values stay tucked away from normal users.</div><div className="form-row section-gap"><Field label="Spin window"><input className="input" defaultValue="350 µs" /></Field><Field label="Coarse wait"><input className="input" defaultValue="2000 µs" /></Field></div></Card><Card><h2 className="card-title">Theme</h2><div className="card-copy">VxClick Dark · #071225 background · #168BFF blue · #26E0FF cyan.</div><div className="quick-actions"><span className="profile-chip"><span className="status-dot" style={{ background: "#168BFF" }} /> Accent Blue</span><span className="profile-chip"><span className="status-dot" style={{ background: "#26E0FF" }} /> Accent Cyan</span></div></Card></div></div>;
 }
 
 function SettingRow({ title, copy, value, onChange }: { title: string; copy: string; value: boolean; onChange: (value: boolean) => void }) {
@@ -202,5 +204,5 @@ function SettingRow({ title, copy, value, onChange }: { title: string; copy: str
 }
 
 function TrayPreview({ running, activeProfile }: { running: boolean; activeProfile: string }) {
-  return <Card><h2 className="card-title">Tray preview</h2><div className="card-copy">Compact controls using the same dark cyan visual language.</div><div className="tray-preview section-gap"><div className="inline"><img className="brand-mark" style={{ width: 28, height: 28, borderRadius: 8 }} src="/app-icon.png" alt="" /><div><strong>VxClick</strong><div className="card-copy">{running ? "Running" : "Ready"}</div></div></div><div className="divider" /><div className="tray-row"><span>Start / Stop</span><span className="kbd">F6</span></div><div className="tray-row"><span>Active profile</span><span>{activeProfile}</span></div><div className="tray-row"><span>Open VxClick</span><MousePointer2 size={14} /></div><div className="divider" /><div className="tray-row"><span>Exit</span><X size={14} /></div></div></Card>;
+  return <Card><h2 className="card-title">Tray preview</h2><div className="card-copy">Compact controls using the same dark cyan visual language.</div><div className="tray-preview section-gap"><div className="inline"><img className="brand-mark" style={{ width: 28, height: 28, borderRadius: 8 }} src="/app-icon.png" alt="" /><div><strong>VxClick</strong><div className="card-copy">{running ? "Running" : "Ready"}</div></div></div><div className="divider" /><div className="tray-row"><span>Start / Stop</span><span className="kbd">Profile hotkey</span></div><div className="tray-row"><span>Active profile</span><span>{activeProfile}</span></div><div className="tray-row"><span>Open VxClick</span><MousePointer2 size={14} /></div><div className="divider" /><div className="tray-row"><span>Exit</span><X size={14} /></div></div></Card>;
 }

@@ -18,7 +18,7 @@
 
 VxClick is a clean-room Windows automation project focused on **stable timing, low input latency, low overhead and safe start/stop behavior**. The native core uses Windows APIs for high-resolution timing and input injection, while the desktop application uses Tauri + React for the UI.
 
-> **Development status:** v0.2.0 is an active development release. The precision clicker, native input backend, profiles, diagnostics and updater plumbing are functional. Several automation surfaces in the UI are still being connected to the native runtime; see [Feature status](docs/features.md) for the exact state.
+> **Development status:** v1.0.0 is in release validation. Native profile-aware hotkeys, QPC macro playback, held-input safety, the stateful remap core and the precision benchmark API/UI are implemented on the release branch. Macro Studio persistence/playback wiring, runtime remap integration and some advanced clicker controls remain explicitly marked as incomplete below rather than being presented as finished.
 
 ## Highlights
 
@@ -28,12 +28,15 @@ VxClick is a clean-room Windows automation project focused on **stable timing, l
 - Native Windows `SendInput` for mouse and keyboard output.
 - Left, right, middle, X1 and X2 mouse button support.
 - Measured CPS, interval, jitter and missed-deadline benchmark telemetry.
-- Low-level Windows keyboard/mouse hook and hotkey infrastructure.
+- Low-level Windows keyboard/mouse hooks and profile-aware global hotkeys.
 - Versioned local profiles with foreground-process auto switching.
-- Macro event model and sandboxed Lua compiler/runtime core.
+- Stateful key/mouse/chord remap rule engine with process scopes.
+- QPC macro playback with cancellation and 0.1x–10x speed scaling.
+- Central held-input tracking and best-effort emergency release.
+- Sandboxed Lua compiler/runtime core.
 - Tauri 2 + React 19 desktop UI.
-- Local diagnostics, crash/performance logs and update checking.
-- Injected-event tagging to help prevent self-triggering automation loops.
+- Local diagnostics, crash/performance logs and hardened GitHub update checking.
+- Injected-event tagging to prevent self-triggering automation loops.
 
 ## Current feature status
 
@@ -42,13 +45,14 @@ VxClick is a clean-room Windows automation project focused on **stable timing, l
 | Precision auto clicker | ✅ Working | Native Rust scheduler + `SendInput`, 1–20,000 CPS safety range |
 | Mouse buttons | ✅ Working | Left, right, middle, X1, X2 |
 | Live CPS counter | ✅ Working | Desktop polls native engine state |
-| CLI precision benchmark | ✅ Working | CPS, interval, jitter, percentiles, missed deadlines |
+| Precision benchmark | ✅ Working | Desktop + CLI reporting actual CPS, interval/jitter percentiles and missed deadlines |
 | Profiles | ✅ Working | Persistent JSON profiles + foreground-process auto switch |
+| Global hooks / clicker hotkeys | ✅ Working | Native profile-aware toggle/hold/once + emergency stop |
 | Diagnostics / logs | ✅ Working | Session, crash and performance logging |
-| Update checker | ✅ Working | GitHub update plumbing + optional SHA-256 patch verification |
-| Global hooks / hotkey engine | 🟡 Core ready | Native core exists; full desktop control wiring is still being completed |
-| Macro Studio | 🟡 In progress | Editor/recording UI exists; native playback/persistence integration is not complete |
-| Key remapping | 🟡 In progress | Core data model/UI shell exist; runtime remap execution is not complete |
+| Update checker | ✅ Working | Official `Vxiey/VxClick` releases + SHA-256 patch verification/staging |
+| Macro playback core | ✅ Working | QPC absolute-deadline player with cancellation and held-input cleanup |
+| Macro Studio | 🟡 In progress | Editor/recording UI exists; full persistence/playback workflow is not yet wired |
+| Key remapping | 🟡 Core ready | Stateful rule engine exists; desktop/runtime hook execution is not complete |
 | Lua automation | 🟡 Core ready | Lua-to-native-event compiler/runtime exists; desktop workflow is not fully wired |
 | Randomization / burst / position modes | 🟡 UI stage | Controls exist in the UI but are not all passed to the native clicker yet |
 
@@ -61,7 +65,7 @@ Full details: **[docs/features.md](docs/features.md)**.
 - Windows 10/11 x64
 - Rust toolchain with the MSVC target
 - Visual Studio Build Tools / C++ build tools required by Rust/Tauri on Windows
-- Node.js + npm
+- Node.js 24+ and npm
 - Microsoft Edge WebView2 Runtime
 
 ### Desktop app
@@ -79,7 +83,7 @@ Build a release bundle:
 npm run tauri:build
 ```
 
-There is currently no published GitHub Release, so building from source is the reliable installation path for v0.2.0.
+Until a signed/published v1.0 GitHub Release is available, building from source or using the verified GitHub Actions artifact is the reliable test path.
 
 ### Native core only
 
@@ -122,13 +126,15 @@ React UI (ui/)
         ▼
 Tauri desktop bridge (src-tauri/)
         │
-        ├── profiles / diagnostics / updater
+        ├── profiles / diagnostics / updater / benchmark
+        │
+        ├── native profile-aware hotkey runtime
         │
         ▼
 Rust automation core (src/)
         │
-        ├── scheduler + telemetry
-        ├── macro / remap / hotkey models
+        ├── precision scheduler + telemetry
+        ├── macro player / remap / hotkey models
         ├── Lua runtime
         │
         ▼
@@ -136,7 +142,7 @@ Windows platform layer
         ├── QueryPerformanceCounter
         ├── SendInput
         ├── low-level keyboard/mouse hooks
-        └── global hotkey handling
+        └── held-input safety release
 ```
 
 The timing worker is intentionally kept separate from UI rendering and frontend polling.
@@ -151,9 +157,11 @@ Read the implementation notes in **[docs/timing-engine.md](docs/timing-engine.md
 
 ## Safety and responsible use
 
+> **Use at your own risk.** The developer does not accept responsibility for account penalties, bans, suspensions, data loss, or other consequences resulting from automation, macros, Lua scripts or recoil-style automation. You are responsible for complying with the rules and terms of service of every application or game you automate.
+
 VxClick does **not** include anti-detection, anti-cheat bypass, process injection or stealth functionality.
 
-Use automation only where it is permitted. You are responsible for complying with the rules and terms of service of any application or game you automate. Automation, macros or recoil-style scripts can lead to account penalties where prohibited.
+The emergency-stop path performs a best-effort release of synthetic keys and mouse buttons still tracked as held by VxClick. Raw typed text and Macro Recorder streams are not written to diagnostic logs by default.
 
 ## Contributing
 
