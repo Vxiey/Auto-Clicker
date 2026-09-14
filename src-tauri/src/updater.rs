@@ -144,7 +144,7 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
         ));
     }
 
-    let actual_hash = format!("{:x}", Sha256::digest(&bytes));
+    let actual_hash = sha256_hex(&bytes);
     if !actual_hash.eq_ignore_ascii_case(&patch.sha256) {
         return Err("patch SHA-256 verification failed".into());
     }
@@ -278,6 +278,17 @@ fn validate_sha256(value: &str) -> Result<(), String> {
         return Err("patch manifest contains an invalid SHA-256 value".into());
     }
     Ok(())
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let digest = Sha256::digest(bytes);
+    let mut output = String::with_capacity(64);
+    for byte in digest {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0x0f) as usize] as char);
+    }
+    output
 }
 
 fn safe_patch_path(dir: &std::path::Path, from: &Version, to: &Version, format: &str) -> PathBuf {
