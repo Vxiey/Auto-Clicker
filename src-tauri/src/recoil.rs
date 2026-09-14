@@ -8,8 +8,9 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use auto_clicker_core::platform::windows::{QpcClock, WindowsInput};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{VK_LBUTTON, VK_RBUTTON};
-use windows_sys::Win32::UI::WindowsAndMessaging::GetAsyncKeyState;
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
+    GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
+};
 
 const RECOIL_SCHEMA_VERSION: u32 = 2;
 const RECOIL_RISK_ACK_VERSION: u32 = 1;
@@ -53,7 +54,7 @@ impl RecoilPreset {
             horizontal: 1.0,
             rpm: 600.0,
             activation_mode: "ads-fire".into(),
-            activation_hotkey: "F1".into(),
+            activation_hotkey: "F9".into(),
             pattern: vec![RecoilStep { x: 0, y: 4 }],
         }
     }
@@ -70,7 +71,7 @@ impl RecoilPreset {
             horizontal: 1.0,
             rpm: 450.0,
             activation_mode: "ads-fire".into(),
-            activation_hotkey: "F2".into(),
+            activation_hotkey: "F10".into(),
             pattern: vec![RecoilStep { x: 0, y: 3 }],
         }
     }
