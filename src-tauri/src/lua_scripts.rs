@@ -62,7 +62,9 @@ impl LuaScriptState {
         }
         document.schema_version = LUA_SCRIPT_SCHEMA_VERSION;
         if document.scripts.len() > MAX_LUA_SCRIPTS {
-            return Err(format!("Lua library supports at most {MAX_LUA_SCRIPTS} scripts"));
+            return Err(format!(
+                "Lua library supports at most {MAX_LUA_SCRIPTS} scripts"
+            ));
         }
         for script in &document.scripts {
             validate_lua_entry(script)?;
@@ -126,7 +128,9 @@ pub fn save_lua_script(
             *existing = script_def.clone();
         } else {
             if document.scripts.len() >= MAX_LUA_SCRIPTS {
-                return Err(format!("Lua library supports at most {MAX_LUA_SCRIPTS} scripts"));
+                return Err(format!(
+                    "Lua library supports at most {MAX_LUA_SCRIPTS} scripts"
+                ));
             }
             document.scripts.push(script_def.clone());
         }
