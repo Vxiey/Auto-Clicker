@@ -281,8 +281,7 @@ fn trim_record_stop_hotkey(events: &mut Vec<MacroEventRecord>) {
 }
 
 fn recorder_reserved(binding: &HotkeyBinding) -> bool {
-    binding.canonical().eq_ignore_ascii_case("F1")
-        || binding.canonical().eq_ignore_ascii_case("F2")
+    binding.canonical().eq_ignore_ascii_case("F1") || binding.canonical().eq_ignore_ascii_case("F2")
 }
 
 fn start_profile_clicker(
@@ -336,8 +335,7 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         },
     ];
 
-    let clicker_binding =
-        HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true);
+    let clicker_binding = HotkeyBinding::parse(&profile.clicker.start_hotkey)?.with_consume(true);
     if recorder_reserved(&clicker_binding) {
         diagnostics.log(
             LogLevel::Warn,
