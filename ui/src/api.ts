@@ -65,6 +65,17 @@ export type StagedPatch = {
   to_version: string;
 };
 
+export type DiagnosticsSnapshot = {
+  directory: string;
+  session_log: string;
+  crash_log: string;
+  performance_log: string;
+  session_id: string;
+  session_log_bytes: number;
+  crash_log_bytes: number;
+  performance_log_bytes: number;
+};
+
 export const profilesApi = {
   snapshot: () => invoke<ProfilesSnapshot>("profiles_snapshot"),
   create: (name: string, processName?: string) =>
@@ -79,4 +90,11 @@ export const profilesApi = {
 export const updaterApi = {
   check: () => invoke<UpdateInfo>("check_for_updates"),
   stagePatch: (patch: PatchAsset) => invoke<StagedPatch>("stage_patch", { patch }),
+};
+
+export const diagnosticsApi = {
+  snapshot: () => invoke<DiagnosticsSnapshot>("diagnostics_snapshot"),
+  clear: () => invoke<void>("clear_diagnostics"),
+  log: (level: "debug" | "info" | "warn" | "error", target: string, message: string) =>
+    invoke<void>("diagnostics_client_log", { level, target, message }),
 };
