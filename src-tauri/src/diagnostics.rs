@@ -120,7 +120,12 @@ impl DiagnosticsState {
                 .payload()
                 .downcast_ref::<&str>()
                 .copied()
-                .or_else(|| panic_info.payload().downcast_ref::<String>().map(String::as_str))
+                .or_else(|| {
+                    panic_info
+                        .payload()
+                        .downcast_ref::<String>()
+                        .map(String::as_str)
+                })
                 .unwrap_or("non-string panic payload");
             let line = format!(
                 "{} [CRASH] session={} thread={} location={} message={}\n",
@@ -243,12 +248,7 @@ fn prune_session_logs(directory: &Path) -> Result<(), String> {
     let mut sessions = fs::read_dir(directory)
         .map_err(|error| format!("failed to read {}: {error}", directory.display()))?
         .filter_map(Result::ok)
-        .filter(|entry| {
-            entry
-                .file_name()
-                .to_string_lossy()
-                .starts_with("session-")
-        })
+        .filter(|entry| entry.file_name().to_string_lossy().starts_with("session-"))
         .collect::<Vec<_>>();
 
     sessions.sort_by_key(|entry| {
@@ -258,7 +258,9 @@ fn prune_session_logs(directory: &Path) -> Result<(), String> {
             .unwrap_or(UNIX_EPOCH)
     });
 
-    let remove_count = sessions.len().saturating_sub(MAX_SESSION_LOGS.saturating_sub(1));
+    let remove_count = sessions
+        .len()
+        .saturating_sub(MAX_SESSION_LOGS.saturating_sub(1));
     for entry in sessions.into_iter().take(remove_count) {
         let _ = fs::remove_file(entry.path());
     }
@@ -266,7 +268,9 @@ fn prune_session_logs(directory: &Path) -> Result<(), String> {
 }
 
 fn rotate_if_needed(path: &Path, max_bytes: u64) -> Result<(), String> {
-    let size = fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0);
+    let size = fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0);
     if size < max_bytes {
         return Ok(());
     }
@@ -297,7 +301,9 @@ fn unix_millis() -> u128 {
 }
 
 fn file_size(path: &Path) -> u64 {
-    fs::metadata(path).map(|metadata| metadata.len()).unwrap_or(0)
+    fs::metadata(path)
+        .map(|metadata| metadata.len())
+        .unwrap_or(0)
 }
 
 fn display_path(path: &Path) -> String {
