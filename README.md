@@ -1,6 +1,12 @@
 # Auto Clicker
 
-A clean-room, high-precision Windows auto clicker, key remapper, and macro engine written in Rust.
+A clean-room, high-precision Windows auto clicker, key remapper, macro engine, and Lua automation host written in Rust.
+
+## Disclaimer
+
+> **Use at your own risk.** The developer does not accept responsibility for account penalties, bans, suspensions, data loss, or other consequences resulting from the use of automation, macros, Lua scripts, or recoil scripts. You are responsible for complying with the rules and terms of service of any software or game you use VxClick with. Using recoil automation to gain an unfair advantage may violate those rules.
+
+VxClick does not include anti-detection or anti-cheat bypass functionality.
 
 ## v0.1 core milestone
 
@@ -52,7 +58,8 @@ src/
 4. Macro recorder/player using the same precision scheduler.
 5. Quick Remap: key ↔ key, key ↔ mouse, mouse ↔ mouse.
 6. Per-app profiles and process rules.
-7. Lightweight DPI-aware Windows UI.
-8. Reproducible performance benchmark suite for 1–10,000+ CPS.
+7. Sandboxed Lua automation host using the same input and scheduler core.
+8. Lightweight DPI-aware Windows UI.
+9. Reproducible performance benchmark suite for 1–10,000+ CPS.
 
 The v0.1 engine has a temporary 20,000 CPS safety cap until real Windows benchmark results are collected.
