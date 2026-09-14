@@ -119,11 +119,13 @@ impl ProfileState {
         let state = self.clone();
         thread::Builder::new()
             .name("vxclick-profile-watcher".into())
-            .spawn(move || loop {
-                if let Err(error) = state.auto_switch_tick(&app) {
-                    eprintln!("profile watcher: {error}");
+            .spawn(move || {
+                loop {
+                    if let Err(error) = state.auto_switch_tick(&app) {
+                        eprintln!("profile watcher: {error}");
+                    }
+                    thread::sleep(WATCH_INTERVAL);
                 }
-                thread::sleep(WATCH_INTERVAL);
             })
             .expect("failed to start profile watcher");
     }
@@ -163,9 +165,10 @@ impl ProfileState {
                 .iter()
                 .find(|profile| {
                     profile.auto_switch
-                        && profile.process_names.iter().any(|candidate| {
-                            normalize_process_name(candidate) == process_lower
-                        })
+                        && profile
+                            .process_names
+                            .iter()
+                            .any(|candidate| normalize_process_name(candidate) == process_lower)
                 })
                 .map(|profile| profile.id.clone())
         };
@@ -337,7 +340,11 @@ fn migrate_and_validate(document: &mut ProfileDocument) -> Result<(), String> {
         ));
     }
     document.schema_version = PROFILE_SCHEMA_VERSION;
-    if !document.profiles.iter().any(|profile| profile.id == "default") {
+    if !document
+        .profiles
+        .iter()
+        .any(|profile| profile.id == "default")
+    {
         document.profiles.insert(0, Profile::default_profile());
     }
     for profile in &document.profiles {
@@ -397,7 +404,10 @@ fn make_profile_id(name: &str) -> String {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_millis();
-    format!("{}-{millis}", if slug.is_empty() { "profile" } else { &slug })
+    format!(
+        "{}-{millis}",
+        if slug.is_empty() { "profile" } else { &slug }
+    )
 }
 
 fn normalize_process_name(value: &str) -> String {
@@ -412,7 +422,7 @@ fn normalize_process_name(value: &str) -> String {
 fn foreground_process_name() -> Option<String> {
     use windows_sys::Win32::Foundation::CloseHandle;
     use windows_sys::Win32::System::Threading::{
-        OpenProcess, QueryFullProcessImageNameW, PROCESS_QUERY_LIMITED_INFORMATION,
+        OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
     };
     use windows_sys::Win32::UI::WindowsAndMessaging::{
         GetForegroundWindow, GetWindowThreadProcessId,
