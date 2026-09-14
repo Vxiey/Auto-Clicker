@@ -27,6 +27,7 @@ const EMERGENCY_STOP_ID: u64 = 2;
 const MACRO_RECORD_START_ID: u64 = 3;
 const MACRO_RECORD_STOP_ID: u64 = 4;
 const MACRO_HOTKEY_BASE: u64 = 10_000;
+const UNASSIGNED_MACRO_TRIGGER: &str = "(unassigned)";
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ActiveMode {
@@ -93,11 +94,14 @@ impl HotkeyRuntime {
                             "main".into(),
                             app.state::<MacroState>(),
                         ) {
-                            Ok(()) => diagnostics.log(
-                                LogLevel::Info,
-                                "macros",
-                                "global macro recording started with F1",
-                            ),
+                            Ok(()) => {
+                                diagnostics.log(
+                                    LogLevel::Info,
+                                    "macros",
+                                    "global macro recording started with F1",
+                                );
+                                let _ = app.emit("macro-recording-state", true);
+                            }
                             Err(error) if error.contains("already active") => {}
                             Err(error) => diagnostics.log(
                                 LogLevel::Error,
@@ -112,11 +116,12 @@ impl HotkeyRuntime {
                         match stop_macro_recording(app.state::<MacroState>()) {
                             Ok(mut recorded) => {
                                 trim_record_stop_hotkey(&mut recorded);
+                                let _ = app.emit("macro-recording-state", false);
                                 if !recorded.is_empty() {
                                     let draft = StoredMacro {
                                         id: String::new(),
                                         name: "Recorded Macro".into(),
-                                        trigger: String::new(),
+                                        trigger: UNASSIGNED_MACRO_TRIGGER.into(),
                                         macro_type: "no-repeat".into(),
                                         repeat_delay_ms: 25,
                                         speed: 1.0,
@@ -332,7 +337,14 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
     ];
 
     let mut macro_by_hotkey = HashMap::new();
-    for (index, macro_def) in macros.iter().filter(|item| !item.trigger.trim().is_empty()).enumerate() {
+    for (index, macro_def) in macros
+        .iter()
+        .filter(|item| {
+            let trigger = item.trigger.trim();
+            !trigger.is_empty() && !trigger.eq_ignore_ascii_case(UNASSIGNED_MACRO_TRIGGER)
+        })
+        .enumerate()
+    {
         let id = MACRO_HOTKEY_BASE + index as u64;
         bindings.push(RegisteredHotkey {
             id,
