@@ -15,7 +15,9 @@ use crate::diagnostics::{DiagnosticsState, LogLevel};
 use crate::macros::MacroState;
 use crate::profiles::{ProfileState, profiles_snapshot};
 use crate::remaps::RemapState;
-use crate::{EngineState, start_clicker_inner, stop_clicker_inner};
+use crate::{
+    ClickerRuntimeOptions, EngineState, start_clicker_with_options_inner, stop_clicker_inner,
+};
 
 const CLICKER_HOTKEY_ID: u64 = 1;
 const EMERGENCY_STOP_ID: u64 = 2;
@@ -34,6 +36,8 @@ struct ActiveProfileConfig {
     cps: f64,
     button: MouseButton,
     mode: ActiveMode,
+    randomize: bool,
+    burst: bool,
     macro_by_hotkey: HashMap<u64, String>,
     remap_by_hotkey: HashMap<u64, String>,
 }
@@ -86,9 +90,8 @@ impl HotkeyRuntime {
                             (ActiveMode::Toggle, HotkeyPhase::Pressed) => {
                                 if engine.running.load(Ordering::Acquire) {
                                     stop_clicker_inner(&engine, &diagnostics);
-                                } else if let Err(error) = start_clicker_inner(
-                                    config.cps,
-                                    config.button,
+                                } else if let Err(error) = start_profile_clicker(
+                                    config,
                                     &engine,
                                     &diagnostics,
                                 ) {
@@ -101,12 +104,8 @@ impl HotkeyRuntime {
                             }
                             (ActiveMode::Hold, HotkeyPhase::Pressed) => {
                                 if !engine.running.load(Ordering::Acquire)
-                                    && let Err(error) = start_clicker_inner(
-                                        config.cps,
-                                        config.button,
-                                        &engine,
-                                        &diagnostics,
-                                    )
+                                    && let Err(error) =
+                                        start_profile_clicker(config, &engine, &diagnostics)
                                 {
                                     diagnostics.log(
                                         LogLevel::Error,
@@ -146,7 +145,9 @@ impl HotkeyRuntime {
                         }
                         id if config.macro_by_hotkey.contains_key(&id) => {
                             if let Some(macro_id) = config.macro_by_hotkey.get(&id)
-                                && let Err(error) = app.state::<MacroState>().handle_hotkey(macro_id, event.phase)
+                                && let Err(error) = app
+                                    .state::<MacroState>()
+                                    .handle_hotkey(macro_id, event.phase)
                             {
                                 diagnostics.log(
                                     LogLevel::Error,
@@ -190,6 +191,24 @@ impl HotkeyRuntime {
             thread: Mutex::new(Some(thread)),
         })
     }
+}
+
+fn start_profile_clicker(
+    config: &ActiveProfileConfig,
+    engine: &EngineState,
+    diagnostics: &DiagnosticsState,
+) -> Result<(), String> {
+    start_clicker_with_options_inner(
+        config.cps,
+        config.button,
+        ClickerRuntimeOptions {
+            randomize_percent: if config.randomize { 5.0 } else { 0.0 },
+            burst_size: if config.burst { 4 } else { 1 },
+            positions: Vec::new(),
+        },
+        engine,
+        diagnostics,
+    )
 }
 
 fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Result<(), String> {
@@ -241,13 +260,15 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
     }
 
     let mut signature = format!(
-        "{}|{}|{}|{:.6}|{}|{}|{}",
+        "{}|{}|{}|{:.6}|{}|{}|{}|{}|{}",
         profile.id,
         profile.clicker.start_hotkey,
         profile.clicker.emergency_stop_hotkey,
         profile.clicker.cps,
         profile.clicker.button,
         profile.clicker.mode,
+        profile.clicker.randomize,
+        profile.clicker.burst,
         snapshot.foreground_process.as_deref().unwrap_or("")
     );
     for binding in &bindings {
@@ -278,11 +299,13 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         LogLevel::Info,
         "hotkeys",
         &format!(
-            "profile={} start={} emergency={} mode={} macros={} remaps={}",
+            "profile={} start={} emergency={} mode={} randomize={} burst={} macros={} remaps={}",
             profile.name,
             profile.clicker.start_hotkey,
             profile.clicker.emergency_stop_hotkey,
             profile.clicker.mode,
+            profile.clicker.randomize,
+            profile.clicker.burst,
             macro_by_hotkey.len(),
             remap_by_hotkey.len()
         ),
@@ -293,6 +316,8 @@ fn sync_runtime(app: &AppHandle, active: &mut Option<ActiveProfileConfig>) -> Re
         cps: profile.clicker.cps,
         button,
         mode,
+        randomize: profile.clicker.randomize,
+        burst: profile.clicker.burst,
         macro_by_hotkey,
         remap_by_hotkey,
     });
