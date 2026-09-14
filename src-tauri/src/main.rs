@@ -128,21 +128,6 @@ fn engine_status(state: State<'_, EngineState>) -> EngineStatus {
     }
 }
 
-pub(crate) fn start_clicker_inner(
-    cps: f64,
-    button: MouseButton,
-    state: &EngineState,
-    diagnostics: &DiagnosticsState,
-) -> Result<(), String> {
-    start_clicker_with_options_inner(
-        cps,
-        button,
-        ClickerRuntimeOptions::default(),
-        state,
-        diagnostics,
-    )
-}
-
 pub(crate) fn start_clicker_with_options_inner(
     cps: f64,
     button: MouseButton,
