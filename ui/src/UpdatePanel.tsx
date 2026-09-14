@@ -5,6 +5,7 @@ import {
   ChevronUp,
   Code2,
   Download,
+  FileText,
   PackageCheck,
   RefreshCw,
   ShieldCheck,
@@ -171,6 +172,7 @@ const CHANGELOG = [
 export function UpdatePanel() {
   const [info, setInfo] = useState<UpdateInfo | null>(null);
   const [checking, setChecking] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [message, setMessage] = useState("");
   const [showChanges, setShowChanges] = useState(true);
 
@@ -186,31 +188,38 @@ export function UpdatePanel() {
     }
   };
 
-  const stagePatch = async () => {
-    if (!info?.patch) return;
-    setChecking(true);
+  const installUpdate = async () => {
+    if (!info?.available || !info.full_release) return;
+    setInstalling(true);
+    setMessage(`Downloading and verifying v${info.latest_version}...`);
     try {
-      const staged = await updaterApi.stagePatch(info.patch);
-      setMessage(`Patch verified and staged: ${staged.to_version}`);
+      await updaterApi.installFull(info);
+      setMessage(`Installer for v${info.latest_version} launched.`);
     } catch (error) {
       setMessage(String(error));
-    } finally {
-      setChecking(false);
+      setInstalling(false);
     }
   };
+
+  const automaticInstallReady = Boolean(
+    info?.available && info.full_release && info.full_release.sha256,
+  );
 
   return (
     <Card>
       <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
         <div>
           <h2 className="card-title">About & Updates</h2>
-          <div className="card-copy">Version history, project links and GitHub update channel.</div>
+          <div className="card-copy">Version history, project links, legal notices and verified GitHub updates.</div>
         </div>
         <div className="quick-actions" style={{ marginTop: 0 }}>
+          <a className="button" href="https://github.com/Vxiey/VxClick/blob/main/TERMS.md" target="_blank" rel="noreferrer">
+            <FileText size={14} /> Terms of Service
+          </a>
           <a className="button" href="https://github.com/Vxiey/VxClick" target="_blank" rel="noreferrer">
             <Code2 size={14} /> GitHub
           </a>
-          <Button disabled={checking} onClick={() => void check()}>
+          <Button disabled={checking || installing} onClick={() => void check()}>
             <RefreshCw size={14} /> Check updates
           </Button>
         </div>
@@ -232,23 +241,33 @@ export function UpdatePanel() {
         </Button>
       </div>
 
-      {info && (
+      {info?.available && (
         <div className="section-gap">
-          {info.patch && (
+          {automaticInstallReady ? (
             <div className="quick-actions">
-              <Button variant="primary" disabled={checking} onClick={() => void stagePatch()}>
-                <Download size={14} /> Stage small patch
+              <Button variant="primary" disabled={installing || checking} onClick={() => void installUpdate()}>
+                <Download size={14} /> {installing ? `Installing v${info.latest_version}...` : `Install v${info.latest_version}`}
               </Button>
               <span className="card-copy">
                 <ShieldCheck size={12} style={{ display: "inline", marginRight: 5 }} />
-                {info.patch.from_version} → {info.patch.to_version} · SHA-256 verified
+                Official GitHub installer · SHA-256 verified before launch
               </span>
+            </div>
+          ) : (
+            <div className="card-copy" style={{ color: "var(--warning)" }}>
+              <AlertTriangle size={12} style={{ display: "inline", marginRight: 5 }} />
+              Automatic install is unavailable because this release does not expose a verified Windows installer digest.
             </div>
           )}
           {info.full_release && (
             <div className="card-copy section-gap">
               <PackageCheck size={12} style={{ display: "inline", marginRight: 5 }} />
-              Full package: {info.full_release.name}
+              Installer: {info.full_release.name}
+            </div>
+          )}
+          {info.patch && (
+            <div className="card-copy section-gap">
+              A verified delta patch is available ({info.patch.from_version} → {info.patch.to_version}), but VxClick uses the full verified installer until automatic patch application is implemented.
             </div>
           )}
         </div>
