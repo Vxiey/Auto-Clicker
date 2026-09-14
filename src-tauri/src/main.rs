@@ -62,11 +62,21 @@ impl Default for EngineState {
     }
 }
 
-#[derive(Debug, Clone, Default)]
+#[derive(Debug, Clone)]
 pub(crate) struct ClickerRuntimeOptions {
-    randomize_percent: f64,
-    burst_size: u32,
-    positions: Vec<(i32, i32)>,
+    pub(crate) randomize_percent: f64,
+    pub(crate) burst_size: u32,
+    pub(crate) positions: Vec<(i32, i32)>,
+}
+
+impl Default for ClickerRuntimeOptions {
+    fn default() -> Self {
+        Self {
+            randomize_percent: 0.0,
+            burst_size: 1,
+            positions: Vec::new(),
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -395,7 +405,12 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::parse_positions;
+    use super::{ClickerRuntimeOptions, parse_positions};
+
+    #[test]
+    fn safe_runtime_options_have_single_click_burst() {
+        assert_eq!(ClickerRuntimeOptions::default().burst_size, 1);
+    }
 
     #[test]
     fn parses_fixed_and_multi_positions() {
