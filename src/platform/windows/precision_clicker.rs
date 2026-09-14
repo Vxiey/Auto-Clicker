@@ -100,7 +100,9 @@ fn validate(config: ClickerConfig) -> Result<(), String> {
         return Err("CPS must be a positive finite value".into());
     }
     if config.cps > 20_000.0 {
-        return Err("v0.1 safety cap is 20,000 CPS; raise it only after benchmark validation".into());
+        return Err(
+            "v0.1 safety cap is 20,000 CPS; raise it only after benchmark validation".into(),
+        );
     }
     if config.duration.is_zero() {
         return Err("duration must be greater than zero".into());
