@@ -255,7 +255,7 @@ export function RecoilScripts() {
             <div className="form-row section-gap">
               <Field label="RPM"><input className="input" type="number" min="30" max="3000" value={draft.rpm} onChange={(event) => setDraft({ ...draft, rpm: Number(event.target.value) })} /></Field>
               <Field label="Activation">
-                <select className="select" value={draft.activation_mode} onChange={(event) => setDraft({ ...draft, activation_mode: event.target.value })}>
+                <select className="select" value={draft.activation_mode} onChange={(event) => setDraft({ ...draft, activation_mode: event.target.value as RecoilPreset["activation_mode"] })}>
                   <option value="ads-fire">ADS + Fire</option>
                   <option value="fire">Fire only</option>
                   <option value="always">Always while armed</option>
