@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
+import { AlertTriangle, Download, PackageCheck, RefreshCw, ShieldCheck } from "lucide-react";
 import { updaterApi, type UpdateInfo } from "./api";
 import { Button, Card } from "./components";
 
@@ -62,6 +62,12 @@ export function UpdatePanel() {
         </div>
       )}
       {message && <div className="card-copy section-gap">{message}</div>}
+
+      <div className="divider" />
+      <div className="card-copy" style={{ color: "var(--warning)" }}>
+        <AlertTriangle size={13} style={{ display: "inline", marginRight: 6 }} />
+        <strong>Use at your own risk.</strong> The developer does not accept responsibility for bans, suspensions, account penalties, or other consequences from using macros, Lua scripts, or recoil automation to gain an unfair advantage. You are responsible for following the rules and terms of service of the software or game you use VxClick with.
+      </div>
     </Card>
   );
 }
