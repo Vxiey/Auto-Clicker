@@ -5,11 +5,16 @@ edition = "2024"
 description = "High-precision Windows auto clicker, macro and remap engine"
 license = "MIT"
 
+[dependencies]
+mlua = { version = "0.11", features = ["lua54", "vendored", "send"] }
+
 [target.'cfg(windows)'.dependencies.windows-sys]
 version = "0.61.2"
 features = [
     "Win32_Foundation",
+    "Win32_System_LibraryLoader",
     "Win32_System_Performance",
     "Win32_System_Threading",
     "Win32_UI_Input_KeyboardAndMouse",
+    "Win32_UI_WindowsAndMessaging",
 ]
