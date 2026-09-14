@@ -26,6 +26,12 @@
         "backgroundColor": "#071225"
       }
     ],
+    "trayIcon": {
+      "id": "main",
+      "iconPath": "icons/icon.png",
+      "tooltip": "VxClick",
+      "showMenuOnLeftClick": false
+    },
     "security": {
       "csp": null
     }
