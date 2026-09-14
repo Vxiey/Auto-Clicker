@@ -97,11 +97,11 @@ cargo run --release -- benchmark --cps 2000 --seconds 5 --button left
 
 The benchmark reports measured output rather than assuming requested CPS equals delivered CPS.
 
-## Documentation / Wiki
+## Documentation
 
-The repository Wiki is versioned with the code under [`docs/`](docs/README.md):
+Project documentation is versioned with the code under [`docs/`](docs/README.md):
 
-- [Wiki home](docs/README.md)
+- [Documentation home](docs/README.md)
 - [Getting started](docs/getting-started.md)
 - [Feature status](docs/features.md)
 - [Architecture](docs/architecture.md)
@@ -111,6 +111,8 @@ The repository Wiki is versioned with the code under [`docs/`](docs/README.md):
 - [Diagnostics](docs/diagnostics.md)
 - [Regression checklist](docs/regression-checklist.md)
 - [Changelog](CHANGELOG.md)
+
+The repository also includes a workflow that publishes these pages to the real GitHub Wiki after the Wiki has been initialized with its first page.
 
 ## Architecture at a glance
 
