@@ -12,6 +12,7 @@ const RELEASES_API: &str = "https://api.github.com/repos/Vxiey/VxClick/releases/
 const RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/Vxiey/VxClick/releases/download/";
 const MAX_PATCH_BYTES: usize = 128 * 1024 * 1024;
 const MAX_FULL_UPDATE_BYTES: usize = 512 * 1024 * 1024;
+const INSTALLER_FORMAT: &str = "installer";
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
@@ -75,15 +76,6 @@ pub struct StagedPatch {
     pub to_version: String,
 }
 
-#[derive(Clone, Debug, Deserialize, Serialize)]
-pub struct StagedFullUpdate {
-    pub path: String,
-    pub sha256: String,
-    pub size: u64,
-    pub target_version: String,
-    pub installer_name: String,
-}
-
 #[tauri::command]
 pub fn check_for_updates() -> Result<UpdateInfo, String> {
     let current = Version::parse(env!("CARGO_PKG_VERSION"))
@@ -116,111 +108,6 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
 }
 
 #[tauri::command]
-pub fn stage_full_update(
-    app: AppHandle,
-    asset: FullReleaseAsset,
-    target_version: String,
-) -> Result<StagedFullUpdate, String> {
-    let current = Version::parse(env!("CARGO_PKG_VERSION"))
-        .map_err(|error| format!("invalid local version: {error}"))?;
-    let target = Version::parse(target_version.trim_start_matches('v'))
-        .map_err(|error| format!("invalid update target version: {error}"))?;
-    if target <= current {
-        return Err(format!(
-            "update target {target} is not newer than this installation ({current})"
-        ));
-    }
-
-    validate_full_release_asset(&asset)?;
-    if asset.size as usize > MAX_FULL_UPDATE_BYTES {
-        return Err("installer exceeds the 512 MiB safety limit".into());
-    }
-    let expected_hash = asset
-        .sha256
-        .as_deref()
-        .ok_or_else(|| "GitHub did not provide a SHA-256 digest for this installer".to_string())?;
-    validate_sha256(expected_hash)?;
-
-    let bytes = download_bytes(&asset.url, MAX_FULL_UPDATE_BYTES)?;
-    if asset.size != 0 && bytes.len() as u64 != asset.size {
-        return Err(format!(
-            "installer size mismatch: GitHub says {} bytes, downloaded {} bytes",
-            asset.size,
-            bytes.len()
-        ));
-    }
-    let actual_hash = sha256_hex(&bytes);
-    if !actual_hash.eq_ignore_ascii_case(expected_hash) {
-        return Err("installer SHA-256 verification failed".into());
-    }
-
-    let dir = update_cache_dir(&app)?;
-    fs::create_dir_all(&dir)
-        .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
-    let path = dir.join(&asset.name);
-    fs::write(&path, &bytes)
-        .map_err(|error| format!("failed to stage {}: {error}", path.display()))?;
-
-    Ok(StagedFullUpdate {
-        path: path.to_string_lossy().into_owned(),
-        sha256: actual_hash,
-        size: bytes.len() as u64,
-        target_version: target.to_string(),
-        installer_name: asset.name,
-    })
-}
-
-#[tauri::command]
-pub fn launch_staged_update(app: AppHandle, staged: StagedFullUpdate) -> Result<(), String> {
-    validate_sha256(&staged.sha256)?;
-    let update_dir = update_cache_dir(&app)?;
-    let canonical_dir = update_dir
-        .canonicalize()
-        .map_err(|error| format!("failed to resolve update cache: {error}"))?;
-    let path = PathBuf::from(&staged.path)
-        .canonicalize()
-        .map_err(|error| format!("failed to resolve staged installer: {error}"))?;
-    if !path.starts_with(&canonical_dir) {
-        return Err("staged installer is outside the VxClick update cache".into());
-    }
-
-    let file_name = path
-        .file_name()
-        .and_then(|value| value.to_str())
-        .ok_or_else(|| "staged installer has an invalid file name".to_string())?;
-    if file_name != staged.installer_name {
-        return Err("staged installer name mismatch".into());
-    }
-    validate_installer_name(file_name)?;
-
-    let bytes = fs::read(&path)
-        .map_err(|error| format!("failed to re-read staged installer: {error}"))?;
-    if bytes.len() as u64 != staged.size {
-        return Err("staged installer size changed after verification".into());
-    }
-    let actual_hash = sha256_hex(&bytes);
-    if !actual_hash.eq_ignore_ascii_case(&staged.sha256) {
-        return Err("staged installer SHA-256 changed after verification".into());
-    }
-
-    let lower = file_name.to_ascii_lowercase();
-    let child = if lower.ends_with(".msi") {
-        Command::new("msiexec.exe")
-            .arg("/i")
-            .arg(&path)
-            .spawn()
-            .map_err(|error| format!("failed to start Windows Installer: {error}"))?
-    } else {
-        Command::new(&path)
-            .spawn()
-            .map_err(|error| format!("failed to start VxClick installer: {error}"))?
-    };
-    drop(child);
-    app.exit(0);
-    Ok(())
-}
-
-#[tauri::command]
 pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, String> {
     let current = Version::parse(env!("CARGO_PKG_VERSION"))
         .map_err(|error| format!("invalid local version: {error}"))?;
@@ -231,32 +118,26 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
 
     if from != current {
         return Err(format!(
-            "patch is for version {from}, but this installation is {current}"
+            "update is for version {from}, but this installation is {current}"
         ));
     }
     if to <= from {
-        return Err("patch target must be newer than the source version".into());
+        return Err("update target must be newer than the source version".into());
     }
     validate_release_url(&patch.url)?;
-    validate_patch_format(&patch.format)?;
     validate_sha256(&patch.sha256)?;
+
+    if patch.format.eq_ignore_ascii_case(INSTALLER_FORMAT) {
+        return install_full_update(app, patch, &from, &to);
+    }
+
+    validate_patch_format(&patch.format)?;
     if patch.size as usize > MAX_PATCH_BYTES {
         return Err("patch is larger than the 128 MiB safety limit".into());
     }
 
     let bytes = download_bytes(&patch.url, MAX_PATCH_BYTES)?;
-    if patch.size != 0 && bytes.len() as u64 != patch.size {
-        return Err(format!(
-            "patch size mismatch: manifest says {} bytes, downloaded {} bytes",
-            patch.size,
-            bytes.len()
-        ));
-    }
-
-    let actual_hash = sha256_hex(&bytes);
-    if !actual_hash.eq_ignore_ascii_case(&patch.sha256) {
-        return Err("patch SHA-256 verification failed".into());
-    }
+    verify_download(&bytes, patch.size, &patch.sha256, "patch")?;
 
     let dir = update_cache_dir(&app)?;
     fs::create_dir_all(&dir)
@@ -267,11 +148,81 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
 
     Ok(StagedPatch {
         path: path.to_string_lossy().into_owned(),
-        sha256: actual_hash,
+        sha256: sha256_hex(&bytes),
         size: bytes.len() as u64,
         from_version: from.to_string(),
         to_version: to.to_string(),
     })
+}
+
+fn install_full_update(
+    app: AppHandle,
+    patch: PatchAsset,
+    from: &Version,
+    to: &Version,
+) -> Result<StagedPatch, String> {
+    if patch.size as usize > MAX_FULL_UPDATE_BYTES {
+        return Err("installer exceeds the 512 MiB safety limit".into());
+    }
+    let installer_name = patch
+        .url
+        .rsplit('/')
+        .next()
+        .ok_or_else(|| "installer URL is missing a file name".to_string())?;
+    validate_installer_name(installer_name)?;
+
+    let bytes = download_bytes(&patch.url, MAX_FULL_UPDATE_BYTES)?;
+    verify_download(&bytes, patch.size, &patch.sha256, "installer")?;
+
+    let dir = update_cache_dir(&app)?;
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
+    let path = dir.join(installer_name);
+    fs::write(&path, &bytes)
+        .map_err(|error| format!("failed to stage {}: {error}", path.display()))?;
+
+    let canonical_dir = dir
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve update cache: {error}"))?;
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve staged installer: {error}"))?;
+    if !canonical_path.starts_with(&canonical_dir) {
+        return Err("staged installer is outside the VxClick update cache".into());
+    }
+
+    let staged_bytes = fs::read(&canonical_path)
+        .map_err(|error| format!("failed to re-read staged installer: {error}"))?;
+    verify_download(
+        &staged_bytes,
+        bytes.len() as u64,
+        &patch.sha256,
+        "staged installer",
+    )?;
+
+    let lower = installer_name.to_ascii_lowercase();
+    let child = if lower.ends_with(".msi") {
+        Command::new("msiexec.exe")
+            .arg("/i")
+            .arg(&canonical_path)
+            .spawn()
+            .map_err(|error| format!("failed to start Windows Installer: {error}"))?
+    } else {
+        Command::new(&canonical_path)
+            .spawn()
+            .map_err(|error| format!("failed to start VxClick installer: {error}"))?
+    };
+    drop(child);
+
+    let staged = StagedPatch {
+        path: canonical_path.to_string_lossy().into_owned(),
+        sha256: sha256_hex(&staged_bytes),
+        size: staged_bytes.len() as u64,
+        from_version: from.to_string(),
+        to_version: to.to_string(),
+    };
+    app.exit(0);
+    Ok(staged)
 }
 
 fn choose_windows_installer(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
@@ -386,12 +337,6 @@ fn validate_release_url(url: &str) -> Result<(), String> {
     Ok(())
 }
 
-fn validate_full_release_asset(asset: &FullReleaseAsset) -> Result<(), String> {
-    validate_release_url(&asset.url)?;
-    validate_installer_name(&asset.name)?;
-    Ok(())
-}
-
 fn validate_installer_name(name: &str) -> Result<(), String> {
     if name.contains('/') || name.contains('\\') {
         return Err("installer name contains a path separator".into());
@@ -421,6 +366,20 @@ fn validate_patch_format(format: &str) -> Result<(), String> {
 fn validate_sha256(value: &str) -> Result<(), String> {
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
         return Err("update metadata contains an invalid SHA-256 value".into());
+    }
+    Ok(())
+}
+
+fn verify_download(bytes: &[u8], expected_size: u64, expected_hash: &str, label: &str) -> Result<(), String> {
+    if expected_size != 0 && bytes.len() as u64 != expected_size {
+        return Err(format!(
+            "{label} size mismatch: expected {expected_size} bytes, downloaded {} bytes",
+            bytes.len()
+        ));
+    }
+    let actual_hash = sha256_hex(bytes);
+    if !actual_hash.eq_ignore_ascii_case(expected_hash) {
+        return Err(format!("{label} SHA-256 verification failed"));
     }
     Ok(())
 }
@@ -479,7 +438,7 @@ mod tests {
     }
 
     #[test]
-    fn installer_selection_prefers_setup_exe() {
+    fn installer_selection_prefers_setup_exe_and_digest() {
         let hash = "a".repeat(64);
         let assets = vec![
             GitHubAsset {
