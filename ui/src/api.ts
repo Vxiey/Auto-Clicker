@@ -86,6 +86,12 @@ export type RecoilStep = {
   y: number;
 };
 
+export type RecoilRiskAcceptance = {
+  version: number;
+  accepted_at_unix: number;
+  app_version: string;
+};
+
 export type RecoilPreset = {
   id: string;
   name: string;
@@ -109,12 +115,6 @@ export type RecoilGameProfile = {
   active_primary_id: string;
   active_secondary_id: string;
   presets: RecoilPreset[];
-};
-
-export type RecoilRiskAcceptance = {
-  version: number;
-  accepted_at_unix: number;
-  app_version: string;
 };
 
 export type RecoilDocument = {
@@ -146,6 +146,7 @@ export type FullReleaseAsset = {
   name: string;
   url: string;
   size: number;
+  sha256: string | null;
 };
 
 export type UpdateInfo = {
@@ -243,23 +244,38 @@ export const recoilApi = {
   setSlot: (slot: 1 | 2) => invoke<void>("set_recoil_slot", { slot }),
   savePreset: (gameId: string, preset: RecoilPreset) =>
     invoke<RecoilPreset>("save_recoil_preset", { gameId, preset }),
-  acceptRisk: (confirmedAccountRisk: boolean, confirmedThirdPartyRules: boolean) =>
+  acceptRisk: () =>
     invoke<void>("recoil_start", {
-      confirmedAccountRisk,
-      confirmedThirdPartyRules,
+      confirmedAccountRisk: true,
+      confirmedThirdPartyRules: true,
       acceptOnly: true,
     }),
-  start: () => invoke<void>("recoil_start", {
-    confirmedAccountRisk: null,
-    confirmedThirdPartyRules: null,
-    acceptOnly: false,
-  }),
+  start: () =>
+    invoke<void>("recoil_start", {
+      confirmedAccountRisk: null,
+      confirmedThirdPartyRules: null,
+      acceptOnly: false,
+    }),
   stop: () => invoke<void>("recoil_stop"),
 };
 
 export const updaterApi = {
   check: () => invoke<UpdateInfo>("check_for_updates"),
   stagePatch: (patch: PatchAsset) => invoke<StagedPatch>("stage_patch", { patch }),
+  installFull: (info: UpdateInfo) => {
+    const asset = info.full_release;
+    if (!asset) return Promise.reject(new Error("No Windows installer is available for this release"));
+    if (!asset.sha256) return Promise.reject(new Error("GitHub did not provide a SHA-256 digest for this installer"));
+    const installer: PatchAsset = {
+      from_version: info.current_version,
+      to_version: info.latest_version,
+      url: asset.url,
+      sha256: asset.sha256,
+      size: asset.size,
+      format: "installer",
+    };
+    return invoke<StagedPatch>("stage_patch", { patch: installer });
+  },
 };
 
 export const diagnosticsApi = {
