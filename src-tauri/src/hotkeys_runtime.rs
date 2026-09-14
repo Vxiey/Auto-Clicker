@@ -129,11 +129,19 @@ impl HotkeyRuntime {
                                 "emergency stop triggered",
                             );
                             stop_clicker_inner(&engine, &diagnostics);
+                            if let Err(error) = WindowsInput.release_all() {
+                                diagnostics.log(
+                                    LogLevel::Error,
+                                    "safety",
+                                    &format!("emergency input release failed: {error}"),
+                                );
+                            }
                         }
                         _ => {}
                     }
                 }
 
+                let _ = WindowsInput.release_all();
                 WindowsHotkeyManager::clear_bindings();
                 WindowsHotkeyManager::unsubscribe();
             })
@@ -230,5 +238,6 @@ impl Drop for HotkeyRuntime {
         {
             let _ = thread.join();
         }
+        let _ = WindowsInput.release_all();
     }
 }
