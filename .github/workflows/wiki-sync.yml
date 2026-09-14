@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Prepare wiki pages
         shell: bash
@@ -25,12 +25,19 @@ jobs:
           set -euo pipefail
           rm -rf .wiki-publish
           mkdir .wiki-publish
+
           cp docs/*.md .wiki-publish/
-          cp docs/README.md .wiki-publish/Home.md
           rm -f .wiki-publish/README.md
           cp CHANGELOG.md .wiki-publish/Changelog.md
 
-          # Convert repository-doc links to GitHub Wiki page links.
+          if compgen -G "docs/wiki/*.md" > /dev/null; then
+            cp docs/wiki/*.md .wiki-publish/
+          fi
+
+          if [[ ! -f .wiki-publish/Home.md ]]; then
+            cp docs/README.md .wiki-publish/Home.md
+          fi
+
           for file in .wiki-publish/*.md; do
             sed -i -E 's#\]\(([^)]+)\.md\)#](\1)#g' "$file"
             sed -i 's#](../CHANGELOG)#](Changelog)#g' "$file"

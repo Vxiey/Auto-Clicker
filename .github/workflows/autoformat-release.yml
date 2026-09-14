@@ -1,0 +1,36 @@
+name: Autoformat v1.0 finalize
+
+on:
+  push:
+    branches: [fix/v1.0-finalize]
+
+permissions:
+  contents: write
+
+jobs:
+  rustfmt:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: fix/v1.0-finalize
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt
+      - name: Format Rust workspaces
+        run: |
+          cargo fmt --all
+          cargo fmt --manifest-path src-tauri/Cargo.toml
+      - name: Commit formatting
+        shell: pwsh
+        run: |
+          if (-not (git status --porcelain)) {
+            Write-Host "Already formatted."
+            exit 0
+          }
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src src-tauri
+          git commit -m "Apply rustfmt for VxClick 1.0 release"
+          git push origin HEAD:fix/v1.0-finalize

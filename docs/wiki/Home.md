@@ -4,14 +4,14 @@ VxClick is a native Windows automation application focused on precise timing, lo
 
 ## Start here
 
-- [Installation](Installation.md)
-- [Auto Clicker](Auto-Clicker.md)
-- [Macro Studio](Macro-Studio.md)
-- [Key Remapping](Key-Remapping.md)
-- [Lua Automation](Lua-Automation.md)
-- [Profiles](Profiles.md)
-- [Diagnostics](Diagnostics.md)
-- [Release 1.0.0](../releases/v1.0.0.md)
+- [Installation](Installation)
+- [Auto Clicker](Auto-Clicker)
+- [Macro Studio](Macro-Studio)
+- [Key Remapping](Key-Remapping)
+- [Lua Automation](Lua-Automation)
+- [Profiles](Profiles)
+- [Diagnostics](Diagnostics)
+- [Release 1.0.0](Release-1.0.0)
 
 ## VxClick 1.0.0
 
