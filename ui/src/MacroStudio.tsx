@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import {
   CircleStop,
   Clock3,
@@ -19,7 +19,7 @@ import {
   Trash2,
   Zap,
 } from "lucide-react";
-import { macroApi, type MacroEventRecord, type StoredMacro } from "./api";
+import { macroApi, type MacroEventRecord, type StoredLuaScript, type StoredMacro } from "./api";
 import { Button, Card, Field, Toggle } from "./components";
 import "./macro-studio.css";
 
@@ -111,6 +111,9 @@ export function MacroStudio() {
   const [search, setSearch] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [luaScripts, setLuaScripts] = useState<StoredLuaScript[]>([]);
+  const [luaId, setLuaId] = useState("");
+  const [luaName, setLuaName] = useState("New Lua Script");
   const [luaScript, setLuaScript] = useState(defaultLua);
   const [luaStatus, setLuaStatus] = useState("");
 
@@ -121,9 +124,10 @@ export function MacroStudio() {
 
   const refresh = async () => {
     try {
-      const snapshot = await macroApi.snapshot();
+      const [snapshot, luaLibrary] = await Promise.all([macroApi.snapshot(), macroApi.luaScripts()]);
       setStoredMacros(snapshot.document.macros);
       setRecording(snapshot.recording);
+      setLuaScripts(luaLibrary.scripts);
     } catch {
       // Browser preview remains usable without Tauri.
     }
@@ -238,6 +242,121 @@ export function MacroStudio() {
     } catch (reason) {
       setLuaStatus(`Error · ${String(reason)}`);
     }
+  };
+
+  const loadLuaScript = (id: string) => {
+    setLuaId(id);
+    if (!id) {
+      setLuaName("New Lua Script");
+      setLuaScript(defaultLua);
+      setLuaStatus("");
+      return;
+    }
+    const selected = luaScripts.find((item) => item.id === id);
+    if (!selected) return;
+    setLuaName(selected.name);
+    setLuaScript(selected.script);
+    setLuaStatus(`Loaded · ${selected.name}`);
+  };
+
+  const saveLua = async () => {
+    setBusy(true);
+    try {
+      const saved = await macroApi.saveLuaScript({ id: luaId, name: luaName, script: luaScript });
+      setLuaId(saved.id);
+      setLuaName(saved.name);
+      setLuaStatus(`Saved · ${saved.name}`);
+      await refresh();
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const renameLua = async () => {
+    if (!luaId) {
+      await saveLua();
+      return;
+    }
+    setBusy(true);
+    try {
+      const renamed = await macroApi.renameLuaScript(luaId, luaName);
+      setLuaName(renamed.name);
+      setLuaStatus(`Renamed · ${renamed.name}`);
+      await refresh();
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const duplicateLua = async () => {
+    if (!luaId) return;
+    setBusy(true);
+    try {
+      const copy = await macroApi.duplicateLuaScript(luaId);
+      setLuaId(copy.id);
+      setLuaName(copy.name);
+      setLuaScript(copy.script);
+      setLuaStatus(`Duplicated · ${copy.name}`);
+      await refresh();
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const deleteLua = async () => {
+    if (!luaId) return;
+    setBusy(true);
+    try {
+      await macroApi.deleteLuaScript(luaId);
+      setLuaId("");
+      setLuaName("New Lua Script");
+      setLuaScript(defaultLua);
+      setLuaStatus("Deleted Lua script");
+      await refresh();
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const uploadLua = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+    if (!file.name.toLowerCase().endsWith(".lua")) {
+      setLuaStatus("Error · select a .lua file");
+      return;
+    }
+    if (file.size > 1024 * 1024) {
+      setLuaStatus("Error · Lua file cannot exceed 1 MiB");
+      return;
+    }
+    try {
+      const script = await file.text();
+      const proposedName = file.name.replace(/\.lua$/i, "").trim() || "Imported Lua Script";
+      const saved = await macroApi.saveLuaScript({ id: "", name: proposedName, script });
+      setLuaId(saved.id);
+      setLuaName(saved.name);
+      setLuaScript(saved.script);
+      setLuaStatus(`Uploaded and saved · ${file.name}`);
+      await refresh();
+    } catch (reason) {
+      setLuaStatus(`Error · ${String(reason)}`);
+    }
+  };
+
+  const newLua = () => {
+    setLuaId("");
+    setLuaName("New Lua Script");
+    setLuaScript(defaultLua);
+    setLuaStatus("New unsaved script");
   };
 
   const totalDuration = useMemo(() => events.reduce((sum, event) => sum + (event.delayMs ?? 0), 0), [events]);
@@ -366,12 +485,33 @@ export function MacroStudio() {
       </div>
 
       <Card className="section-gap">
+        <div className="inline" style={{ justifyContent: "space-between", width: "100%", alignItems: "flex-start" }}>
+          <div><div className="macro-panel-title"><Code2 size={15} style={{ display: "inline", marginRight: 7 }} />Lua script library</div><div className="macro-panel-copy">Create, upload, rename and save sandboxed Lua scripts. Scripts compile into the same native InputAction precision player.</div></div>
+          <div className="quick-actions" style={{ marginTop: 0 }}>
+            <Button onClick={newLua}><Plus size={14} /> New</Button>
+            <Button onClick={() => document.getElementById("lua-file-upload")?.click()}>Upload .lua</Button>
+            <Button disabled={busy} onClick={() => void saveLua()}><Save size={14} /> Save</Button>
+            <Button disabled={busy || !luaId} onClick={() => void renameLua()}>Rename</Button>
+            <Button disabled={busy || !luaId} onClick={() => void duplicateLua()}>Duplicate</Button>
+            <Button variant="danger" disabled={busy || !luaId} onClick={() => void deleteLua()}><Trash2 size={14} /> Delete</Button>
+          </div>
+        </div>
+        <input id="lua-file-upload" type="file" accept=".lua,text/plain" style={{ display: "none" }} onChange={(event) => void uploadLua(event)} />
+        <div className="form-row section-gap">
+          <Field label="Saved Lua script">
+            <select className="select" value={luaId} onChange={(event) => loadLuaScript(event.target.value)}>
+              <option value="">New / unsaved</option>
+              {luaScripts.map((script) => <option key={script.id} value={script.id}>{script.name}</option>)}
+            </select>
+          </Field>
+          <Field label="Script name"><input className="input" value={luaName} maxLength={96} onChange={(event) => setLuaName(event.target.value)} /></Field>
+        </div>
+        <textarea className="input section-gap" style={{ width: "100%", minHeight: 220, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" }} value={luaScript} onChange={(event) => setLuaScript(event.target.value)} spellCheck={false} />
         <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
-          <div><div className="macro-panel-title"><Code2 size={15} style={{ display: "inline", marginRight: 7 }} />Lua automation</div><div className="macro-panel-copy">Sandboxed Lua compiles into the same native InputAction timeline and precision player.</div></div>
+          <div className="card-copy">Stored locally in VxClick · max 256 scripts · max 1 MiB per script.</div>
           <div className="quick-actions" style={{ marginTop: 0 }}><Button onClick={() => void validateLua()}>Validate</Button><Button variant="primary" onClick={() => void runLua()}><Play size={14} /> Run Lua</Button><Button onClick={() => void macroApi.stop()}><CircleStop size={14} /> Stop</Button></div>
         </div>
-        <textarea className="input section-gap" style={{ width: "100%", minHeight: 180, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" }} value={luaScript} onChange={(event) => setLuaScript(event.target.value)} spellCheck={false} />
-        {luaStatus && <div className="card-copy">{luaStatus}</div>}
+        {luaStatus && <div className="card-copy section-gap">{luaStatus}</div>}
       </Card>
     </div>
   );
