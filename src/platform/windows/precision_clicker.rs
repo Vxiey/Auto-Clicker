@@ -4,8 +4,7 @@ use std::thread;
 use std::time::Duration;
 
 use windows_sys::Win32::System::Threading::{
-    GetCurrentProcess, GetCurrentThread, HIGH_PRIORITY_CLASS, SetPriorityClass, SetThreadPriority,
-    THREAD_PRIORITY_HIGHEST,
+    GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::SetCursorPos;
 
@@ -88,14 +87,13 @@ impl PrecisionClicker {
         let stop_at = start.saturating_add(run_ticks.ceil() as i64);
         let mut deadline = start as f64;
         let expected_clicks = (config.cps * config.duration.as_secs_f64()).ceil() as usize;
+        let max_clicks = expected_clicks.saturating_add(1);
         let mut click_timestamps_us = Vec::with_capacity(expected_clicks.min(2_000_000));
         let mut deadline_errors_us = Vec::with_capacity(expected_clicks.min(2_000_000));
         let mut missed_deadlines = 0_u64;
+        let spin_window_us = effective_spin_window(config.spin_window_us, config.cps);
 
-        while deadline < stop_at as f64 {
-            // The benchmark is duration-bounded by the real monotonic clock, not
-            // only by the ideal schedule. This prevents a delayed worker from
-            // extending the test while trying to catch up overdue clicks.
+        while deadline < stop_at as f64 && click_timestamps_us.len() < max_clicks {
             if self.clock.now_ticks() >= stop_at {
                 break;
             }
@@ -104,7 +102,7 @@ impl PrecisionClicker {
                 &self.clock,
                 (deadline.round() as i64).min(stop_at),
                 config.coarse_wait_threshold_us,
-                config.spin_window_us,
+                spin_window_us,
             );
 
             let before_send = self.clock.now_ticks();
@@ -123,13 +121,7 @@ impl PrecisionClicker {
             click_timestamps_us.push(self.clock.ticks_to_micros(after_send - start));
             deadline_errors_us.push(late_us);
 
-            deadline += interval_ticks;
-
-            // Do not emit catch-up clicks after a long scheduler stall. Re-anchor
-            // to the actual clock while preserving the requested interval.
-            if after_send as f64 > deadline + interval_ticks * 4.0 {
-                deadline = after_send as f64 + interval_ticks;
-            }
+            deadline = next_deadline(deadline, interval_ticks, after_send as f64);
         }
 
         let end = self.clock.now_ticks();
@@ -154,6 +146,7 @@ impl PrecisionClicker {
         let frequency = self.clock.frequency() as f64;
         let base_interval_ticks = frequency / config.cps;
         let burst_size = config.burst_size.clamp(1, 16);
+        let spin_window_us = effective_spin_window(config.spin_window_us, config.cps);
         let mut deadline = self.clock.now_ticks() as f64;
         let mut rng = (self.clock.now_ticks() as u64) ^ 0x9E37_79B9_7F4A_7C15;
         let mut position_index = 0_usize;
@@ -163,7 +156,7 @@ impl PrecisionClicker {
                 &self.clock,
                 deadline.round() as i64,
                 config.coarse_wait_threshold_us,
-                config.spin_window_us,
+                spin_window_us,
                 stop,
             ) {
                 break;
@@ -187,14 +180,8 @@ impl PrecisionClicker {
 
             let factor = randomized_interval_factor(&mut rng, config.randomize_percent);
             let group_interval = base_interval_ticks * produced as f64 * factor;
-            deadline += group_interval;
-
-            // Never try to catch up a long scheduling stall with a large click burst.
-            // Re-anchor the absolute schedule instead.
             let now = self.clock.now_ticks() as f64;
-            if now > deadline + group_interval * 4.0 {
-                deadline = now + group_interval;
-            }
+            deadline = next_deadline(deadline, group_interval, now);
         }
 
         Ok(())
@@ -226,12 +213,37 @@ fn validate_live_config(config: &LiveClickerConfig) -> Result<(), String> {
 }
 
 #[inline]
+fn next_deadline(previous_deadline: f64, interval: f64, now: f64) -> f64 {
+    let scheduled = previous_deadline + interval;
+    if now >= scheduled {
+        now + interval
+    } else {
+        scheduled
+    }
+}
+
+#[inline]
+fn effective_spin_window(configured_us: f64, cps: f64) -> f64 {
+    let interval_us = 1_000_000.0 / cps;
+    configured_us.min((interval_us * 0.25).clamp(50.0, 350.0))
+}
+
+#[inline]
+fn controlled_sleep_cap_us(remaining_us: f64) -> u64 {
+    if remaining_us > 50_000.0 {
+        20_000
+    } else if remaining_us > 10_000.0 {
+        5_000
+    } else {
+        1_000
+    }
+}
+
+#[inline]
 fn randomized_interval_factor(state: &mut u64, percent: f64) -> f64 {
     if percent <= 0.0 {
         return 1.0;
     }
-    // xorshift64*: deterministic, allocation-free and sufficient for timing
-    // variation. This is not intended for cryptographic randomness.
     *state ^= *state >> 12;
     *state ^= *state << 25;
     *state ^= *state >> 27;
@@ -285,7 +297,9 @@ fn wait_until_controlled(
         let remaining_us = clock.ticks_to_micros(deadline - now);
         if remaining_us > coarse_threshold_us {
             let sleep_us = (remaining_us - spin_window_us).max(100.0) as u64;
-            thread::sleep(Duration::from_micros(sleep_us.min(1_000)));
+            thread::sleep(Duration::from_micros(
+                sleep_us.min(controlled_sleep_cap_us(remaining_us)),
+            ));
         } else if remaining_us > spin_window_us {
             thread::yield_now();
         } else {
@@ -304,14 +318,16 @@ fn wait_until_controlled(
 
 fn tune_current_worker() {
     unsafe {
-        let _ = SetPriorityClass(GetCurrentProcess(), HIGH_PRIORITY_CLASS);
-        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_HIGHEST);
+        let _ = SetThreadPriority(GetCurrentThread(), THREAD_PRIORITY_ABOVE_NORMAL);
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use super::{LiveClickerConfig, randomized_interval_factor, validate_live_config};
+    use super::{
+        LiveClickerConfig, controlled_sleep_cap_us, effective_spin_window, next_deadline,
+        randomized_interval_factor, validate_live_config,
+    };
 
     #[test]
     fn randomization_stays_inside_requested_band() {
@@ -335,5 +351,24 @@ mod tests {
             ..LiveClickerConfig::default()
         };
         assert!(validate_live_config(&too_many_positions).is_err());
+    }
+
+    #[test]
+    fn missed_deadline_never_schedules_catch_up_click() {
+        assert_eq!(next_deadline(1_000.0, 100.0, 1_250.0), 1_350.0);
+        assert_eq!(next_deadline(1_000.0, 100.0, 1_050.0), 1_100.0);
+    }
+
+    #[test]
+    fn high_cps_reduces_busy_spin_window() {
+        assert_eq!(effective_spin_window(350.0, 10_000.0), 50.0);
+        assert_eq!(effective_spin_window(350.0, 250.0), 350.0);
+    }
+
+    #[test]
+    fn long_intervals_reduce_wakeup_frequency() {
+        assert_eq!(controlled_sleep_cap_us(100_000.0), 20_000);
+        assert_eq!(controlled_sleep_cap_us(20_000.0), 5_000);
+        assert_eq!(controlled_sleep_cap_us(5_000.0), 1_000);
     }
 }

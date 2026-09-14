@@ -9,6 +9,8 @@ use tauri::{AppHandle, Emitter, Manager, State};
 
 const PROFILE_SCHEMA_VERSION: u32 = 1;
 const WATCH_INTERVAL: Duration = Duration::from_millis(500);
+const MIN_CLICKER_CPS: f64 = 1.0 / 604_800.0;
+const MAX_CLICKER_CPS: f64 = 20_000.0;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct ClickerProfileSettings {
@@ -365,8 +367,10 @@ fn validate_profile(profile: &Profile) -> Result<(), String> {
         return Err("invalid profile id".into());
     }
     clean_name(&profile.name)?;
-    if !profile.clicker.cps.is_finite() || !(1.0..=20_000.0).contains(&profile.clicker.cps) {
-        return Err("profile CPS must be between 1 and 20,000".into());
+    if !profile.clicker.cps.is_finite()
+        || !(MIN_CLICKER_CPS..=MAX_CLICKER_CPS).contains(&profile.clicker.cps)
+    {
+        return Err("profile CPS must be positive, no slower than one click per week, and no higher than 20,000".into());
     }
     if !matches!(
         profile.clicker.button.as_str(),

@@ -3,8 +3,10 @@
 mod benchmark;
 mod diagnostics;
 mod hotkeys_runtime;
+mod lua_scripts;
 mod macros;
 mod profiles;
+mod recoil;
 mod remaps;
 mod updater;
 
@@ -19,6 +21,10 @@ use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
 use hotkeys_runtime::HotkeyRuntime;
+use lua_scripts::{
+    LuaScriptState, delete_lua_script, duplicate_lua_script, lua_scripts_snapshot,
+    rename_lua_script, save_lua_script,
+};
 use macros::{
     MacroState, delete_macro, macros_snapshot, play_macro, run_lua_script, save_macro,
     start_macro_recording, stop_macro, stop_macro_recording, validate_lua_script,
@@ -27,10 +33,17 @@ use profiles::{
     ProfileState, activate_profile, create_profile, delete_profile, foreground_process,
     profiles_snapshot, save_profile, set_profile_auto_switch,
 };
+use recoil::{
+    RecoilState, activate_recoil_game, create_recoil_game, recoil_snapshot, recoil_start,
+    recoil_stop, save_recoil_game, save_recoil_preset, set_recoil_slot,
+};
 use remaps::{RemapState, delete_remap, remaps_snapshot, save_remap};
 use serde::Serialize;
 use tauri::{Manager, State};
 use updater::{check_for_updates, stage_patch};
+
+const MIN_CLICKER_CPS: f64 = 1.0 / 604_800.0; // one click per week
+const MAX_CLICKER_CPS: f64 = 20_000.0;
 
 struct SampleState {
     at: Instant,
@@ -115,21 +128,6 @@ fn engine_status(state: State<'_, EngineState>) -> EngineStatus {
     }
 }
 
-pub(crate) fn start_clicker_inner(
-    cps: f64,
-    button: MouseButton,
-    state: &EngineState,
-    diagnostics: &DiagnosticsState,
-) -> Result<(), String> {
-    start_clicker_with_options_inner(
-        cps,
-        button,
-        ClickerRuntimeOptions::default(),
-        state,
-        diagnostics,
-    )
-}
-
 pub(crate) fn start_clicker_with_options_inner(
     cps: f64,
     button: MouseButton,
@@ -137,9 +135,12 @@ pub(crate) fn start_clicker_with_options_inner(
     state: &EngineState,
     diagnostics: &DiagnosticsState,
 ) -> Result<(), String> {
-    if !cps.is_finite() || !(1.0..=20_000.0).contains(&cps) {
+    if !cps.is_finite() || !(MIN_CLICKER_CPS..=MAX_CLICKER_CPS).contains(&cps) {
         diagnostics.log(LogLevel::Warn, "clicker", "rejected invalid CPS value");
-        return Err("CPS must be between 1 and 20,000".into());
+        return Err(
+            "CPS must be positive, no slower than one click per week, and no higher than 20,000"
+                .into(),
+        );
     }
     if !options.randomize_percent.is_finite() || !(0.0..=50.0).contains(&options.randomize_percent)
     {
@@ -175,7 +176,7 @@ pub(crate) fn start_clicker_with_options_inner(
         LogLevel::Info,
         "clicker",
         &format!(
-            "starting target_cps={cps:.3} button={button:?} randomize={:.1}% burst={} positions={}",
+            "starting target_cps={cps:.6} button={button:?} randomize={:.1}% burst={} positions={}",
             options.randomize_percent,
             options.burst_size,
             options.positions.len()
@@ -218,7 +219,7 @@ pub(crate) fn start_clicker_with_options_inner(
                     LogLevel::Info,
                     "clicker",
                     &format!(
-                        "stopped elapsed_s={elapsed:.3} clicks={produced} actual_cps={actual:.3}"
+                        "stopped elapsed_s={elapsed:.3} clicks={produced} actual_cps={actual:.6}"
                     ),
                 ),
                 Err(error) => worker_diagnostics.log(
@@ -230,7 +231,7 @@ pub(crate) fn start_clicker_with_options_inner(
             worker_diagnostics.performance(
                 "clicker-run",
                 &format!(
-                    "target_cps={cps:.3} actual_cps={actual:.3} elapsed_s={elapsed:.3} clicks={produced}"
+                    "target_cps={cps:.6} actual_cps={actual:.6} elapsed_s={elapsed:.3} clicks={produced}"
                 ),
             );
             running.store(false, Ordering::Release);
@@ -355,11 +356,23 @@ fn main() {
             })?;
             app.manage(macros);
 
+            let lua_scripts = LuaScriptState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "lua-scripts", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(lua_scripts);
+
             let remaps = RemapState::load(app.handle()).map_err(|error| {
                 diagnostics.log(LogLevel::Error, "remap", &error);
                 std::io::Error::other(error)
             })?;
             app.manage(remaps);
+
+            let recoil = RecoilState::load(app.handle()).map_err(|error| {
+                diagnostics.log(LogLevel::Error, "recoil", &error);
+                std::io::Error::other(error)
+            })?;
+            app.manage(recoil);
 
             let hotkeys = HotkeyRuntime::start(app.handle().clone()).map_err(|error| {
                 diagnostics.log(LogLevel::Error, "hotkeys", &error);
@@ -394,9 +407,22 @@ fn main() {
             stop_macro_recording,
             validate_lua_script,
             run_lua_script,
+            lua_scripts_snapshot,
+            save_lua_script,
+            rename_lua_script,
+            duplicate_lua_script,
+            delete_lua_script,
             remaps_snapshot,
             save_remap,
             delete_remap,
+            recoil_snapshot,
+            create_recoil_game,
+            save_recoil_game,
+            activate_recoil_game,
+            set_recoil_slot,
+            save_recoil_preset,
+            recoil_start,
+            recoil_stop,
             check_for_updates,
             stage_patch
         ])

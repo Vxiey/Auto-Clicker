@@ -1,5 +1,6 @@
 use std::fs;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 
 use semver::Version;
 use serde::{Deserialize, Serialize};
@@ -10,6 +11,8 @@ const REPO: &str = "Vxiey/VxClick";
 const RELEASES_API: &str = "https://api.github.com/repos/Vxiey/VxClick/releases/latest";
 const RELEASE_DOWNLOAD_PREFIX: &str = "https://github.com/Vxiey/VxClick/releases/download/";
 const MAX_PATCH_BYTES: usize = 128 * 1024 * 1024;
+const MAX_FULL_UPDATE_BYTES: usize = 512 * 1024 * 1024;
+const INSTALLER_FORMAT: &str = "installer";
 
 #[derive(Debug, Deserialize)]
 struct GitHubRelease {
@@ -24,6 +27,8 @@ struct GitHubAsset {
     name: String,
     browser_download_url: String,
     size: u64,
+    #[serde(default)]
+    digest: Option<String>,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
@@ -42,11 +47,12 @@ struct PatchManifest {
     patches: Vec<PatchAsset>,
 }
 
-#[derive(Clone, Debug, Serialize)]
+#[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FullReleaseAsset {
     pub name: String,
     pub url: String,
     pub size: u64,
+    pub sha256: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -79,7 +85,7 @@ pub fn check_for_updates() -> Result<UpdateInfo, String> {
     let latest = Version::parse(&latest_text)
         .map_err(|error| format!("invalid release version '{}': {error}", release.tag_name))?;
 
-    let full_release = choose_windows_asset(&release.assets);
+    let full_release = choose_windows_installer(&release.assets);
     let patch = if latest > current {
         find_patch(&release.assets, &current, &latest).unwrap_or_else(|error| {
             eprintln!("update patch manifest ignored: {error}");
@@ -112,47 +118,28 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
 
     if from != current {
         return Err(format!(
-            "patch is for version {from}, but this installation is {current}"
+            "update is for version {from}, but this installation is {current}"
         ));
     }
     if to <= from {
-        return Err("patch target must be newer than the source version".into());
+        return Err("update target must be newer than the source version".into());
     }
-    validate_patch_url(&patch.url)?;
-    validate_patch_format(&patch.format)?;
+    validate_release_url(&patch.url)?;
     validate_sha256(&patch.sha256)?;
+
+    if patch.format.eq_ignore_ascii_case(INSTALLER_FORMAT) {
+        return install_full_update(app, patch, &from, &to);
+    }
+
+    validate_patch_format(&patch.format)?;
     if patch.size as usize > MAX_PATCH_BYTES {
         return Err("patch is larger than the 128 MiB safety limit".into());
     }
 
-    let mut response = github_request(&patch.url)?;
-    let bytes = response
-        .body_mut()
-        .with_config()
-        .limit((MAX_PATCH_BYTES + 1) as u64)
-        .read_to_vec()
-        .map_err(|error| format!("failed to download patch: {error}"))?;
-    if bytes.len() > MAX_PATCH_BYTES {
-        return Err("download exceeded the 128 MiB patch safety limit".into());
-    }
-    if patch.size != 0 && bytes.len() as u64 != patch.size {
-        return Err(format!(
-            "patch size mismatch: manifest says {} bytes, downloaded {} bytes",
-            patch.size,
-            bytes.len()
-        ));
-    }
+    let bytes = download_bytes(&patch.url, MAX_PATCH_BYTES)?;
+    verify_download(&bytes, patch.size, &patch.sha256, "patch")?;
 
-    let actual_hash = sha256_hex(&bytes);
-    if !actual_hash.eq_ignore_ascii_case(&patch.sha256) {
-        return Err("patch SHA-256 verification failed".into());
-    }
-
-    let dir = app
-        .path()
-        .app_cache_dir()
-        .map_err(|error| format!("failed to resolve cache directory: {error}"))?
-        .join("updates");
+    let dir = update_cache_dir(&app)?;
     fs::create_dir_all(&dir)
         .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
     let path = safe_patch_path(&dir, &from, &to, &patch.format);
@@ -161,25 +148,93 @@ pub fn stage_patch(app: AppHandle, patch: PatchAsset) -> Result<StagedPatch, Str
 
     Ok(StagedPatch {
         path: path.to_string_lossy().into_owned(),
-        sha256: actual_hash,
+        sha256: sha256_hex(&bytes),
         size: bytes.len() as u64,
         from_version: from.to_string(),
         to_version: to.to_string(),
     })
 }
 
-fn choose_windows_asset(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
+fn install_full_update(
+    app: AppHandle,
+    patch: PatchAsset,
+    from: &Version,
+    to: &Version,
+) -> Result<StagedPatch, String> {
+    if patch.size as usize > MAX_FULL_UPDATE_BYTES {
+        return Err("installer exceeds the 512 MiB safety limit".into());
+    }
+    let installer_name = patch
+        .url
+        .rsplit('/')
+        .next()
+        .ok_or_else(|| "installer URL is missing a file name".to_string())?;
+    validate_installer_name(installer_name)?;
+
+    let bytes = download_bytes(&patch.url, MAX_FULL_UPDATE_BYTES)?;
+    verify_download(&bytes, patch.size, &patch.sha256, "installer")?;
+
+    let dir = update_cache_dir(&app)?;
+    fs::create_dir_all(&dir)
+        .map_err(|error| format!("failed to create {}: {error}", dir.display()))?;
+    let path = dir.join(installer_name);
+    fs::write(&path, &bytes)
+        .map_err(|error| format!("failed to stage {}: {error}", path.display()))?;
+
+    let canonical_dir = dir
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve update cache: {error}"))?;
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|error| format!("failed to resolve staged installer: {error}"))?;
+    if !canonical_path.starts_with(&canonical_dir) {
+        return Err("staged installer is outside the VxClick update cache".into());
+    }
+
+    let staged_bytes = fs::read(&canonical_path)
+        .map_err(|error| format!("failed to re-read staged installer: {error}"))?;
+    verify_download(
+        &staged_bytes,
+        bytes.len() as u64,
+        &patch.sha256,
+        "staged installer",
+    )?;
+
+    let lower = installer_name.to_ascii_lowercase();
+    let child = if lower.ends_with(".msi") {
+        Command::new("msiexec.exe")
+            .arg("/i")
+            .arg(&canonical_path)
+            .spawn()
+            .map_err(|error| format!("failed to start Windows Installer: {error}"))?
+    } else {
+        Command::new(&canonical_path)
+            .spawn()
+            .map_err(|error| format!("failed to start VxClick installer: {error}"))?
+    };
+    drop(child);
+
+    let staged = StagedPatch {
+        path: canonical_path.to_string_lossy().into_owned(),
+        sha256: sha256_hex(&staged_bytes),
+        size: staged_bytes.len() as u64,
+        from_version: from.to_string(),
+        to_version: to.to_string(),
+    };
+    app.exit(0);
+    Ok(staged)
+}
+
+fn choose_windows_installer(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
     let priority = |name: &str| {
         let lower = name.to_ascii_lowercase();
         if !lower.contains("vxclick") {
             return 99;
         }
-        if lower.ends_with(".msi") {
+        if lower.ends_with("setup.exe") {
             0
-        } else if lower.ends_with(".exe") {
+        } else if lower.ends_with(".msi") {
             1
-        } else if lower.ends_with(".zip") {
-            2
         } else {
             99
         }
@@ -188,13 +243,14 @@ fn choose_windows_asset(assets: &[GitHubAsset]) -> Option<FullReleaseAsset> {
     assets
         .iter()
         .filter(|asset| {
-            priority(&asset.name) < 99 && validate_patch_url(&asset.browser_download_url).is_ok()
+            priority(&asset.name) < 99 && validate_release_url(&asset.browser_download_url).is_ok()
         })
         .min_by_key(|asset| priority(&asset.name))
         .map(|asset| FullReleaseAsset {
             name: asset.name.clone(),
             url: asset.browser_download_url.clone(),
             size: asset.size,
+            sha256: asset.digest.as_deref().and_then(parse_github_sha256),
         })
 }
 
@@ -212,7 +268,7 @@ fn find_patch(
         return Ok(None);
     };
 
-    validate_patch_url(&manifest_asset.browser_download_url)?;
+    validate_release_url(&manifest_asset.browser_download_url)?;
     let manifest: PatchManifest = github_get_json(&manifest_asset.browser_download_url)?;
     if manifest.schema_version != 1 {
         return Err(format!(
@@ -231,7 +287,7 @@ fn find_patch(
             Err(_) => continue,
         };
         if &from == current && &to == latest {
-            validate_patch_url(&patch.url)?;
+            validate_release_url(&patch.url)?;
             validate_patch_format(&patch.format)?;
             validate_sha256(&patch.sha256)?;
             if patch.size as usize > MAX_PATCH_BYTES {
@@ -251,6 +307,20 @@ fn github_get_json<T: for<'de> Deserialize<'de>>(url: &str) -> Result<T, String>
         .map_err(|error| format!("failed to decode GitHub response: {error}"))
 }
 
+fn download_bytes(url: &str, limit: usize) -> Result<Vec<u8>, String> {
+    let mut response = github_request(url)?;
+    let bytes = response
+        .body_mut()
+        .with_config()
+        .limit((limit + 1) as u64)
+        .read_to_vec()
+        .map_err(|error| format!("failed to download update: {error}"))?;
+    if bytes.len() > limit {
+        return Err("download exceeded the configured update safety limit".into());
+    }
+    Ok(bytes)
+}
+
 fn github_request(url: &str) -> Result<ureq::http::Response<ureq::Body>, String> {
     ureq::get(url)
         .header("User-Agent", concat!("VxClick/", env!("CARGO_PKG_VERSION")))
@@ -260,11 +330,28 @@ fn github_request(url: &str) -> Result<ureq::http::Response<ureq::Body>, String>
         .map_err(|error| format!("GitHub request failed: {error}"))
 }
 
-fn validate_patch_url(url: &str) -> Result<(), String> {
+fn validate_release_url(url: &str) -> Result<(), String> {
     if !url.starts_with(RELEASE_DOWNLOAD_PREFIX) {
         return Err("update URL must point to the official VxClick GitHub release area".into());
     }
     Ok(())
+}
+
+fn validate_installer_name(name: &str) -> Result<(), String> {
+    if name.contains('/') || name.contains('\\') {
+        return Err("installer name contains a path separator".into());
+    }
+    let lower = name.to_ascii_lowercase();
+    if !lower.starts_with("vxclick") || !(lower.ends_with("setup.exe") || lower.ends_with(".msi")) {
+        return Err("automatic updates require an official VxClick setup EXE or MSI".into());
+    }
+    Ok(())
+}
+
+fn parse_github_sha256(value: &str) -> Option<String> {
+    let hash = value.strip_prefix("sha256:")?;
+    validate_sha256(hash).ok()?;
+    Some(hash.to_ascii_lowercase())
 }
 
 fn validate_patch_format(format: &str) -> Result<(), String> {
@@ -276,7 +363,26 @@ fn validate_patch_format(format: &str) -> Result<(), String> {
 
 fn validate_sha256(value: &str) -> Result<(), String> {
     if value.len() != 64 || !value.bytes().all(|byte| byte.is_ascii_hexdigit()) {
-        return Err("patch manifest contains an invalid SHA-256 value".into());
+        return Err("update metadata contains an invalid SHA-256 value".into());
+    }
+    Ok(())
+}
+
+fn verify_download(
+    bytes: &[u8],
+    expected_size: u64,
+    expected_hash: &str,
+    label: &str,
+) -> Result<(), String> {
+    if expected_size != 0 && bytes.len() as u64 != expected_size {
+        return Err(format!(
+            "{label} size mismatch: expected {expected_size} bytes, downloaded {} bytes",
+            bytes.len()
+        ));
+    }
+    let actual_hash = sha256_hex(bytes);
+    if !actual_hash.eq_ignore_ascii_case(expected_hash) {
+        return Err(format!("{label} SHA-256 verification failed"));
     }
     Ok(())
 }
@@ -292,7 +398,15 @@ fn sha256_hex(bytes: &[u8]) -> String {
     output
 }
 
-fn safe_patch_path(dir: &std::path::Path, from: &Version, to: &Version, format: &str) -> PathBuf {
+fn update_cache_dir(app: &AppHandle) -> Result<PathBuf, String> {
+    Ok(app
+        .path()
+        .app_cache_dir()
+        .map_err(|error| format!("failed to resolve cache directory: {error}"))?
+        .join("updates"))
+}
+
+fn safe_patch_path(dir: &Path, from: &Version, to: &Version, format: &str) -> PathBuf {
     let extension = match format.to_ascii_lowercase().as_str() {
         "bsdiff" => "bsdiff",
         "zstd" => "zst",
@@ -303,7 +417,10 @@ fn safe_patch_path(dir: &std::path::Path, from: &Version, to: &Version, format: 
 
 #[cfg(test)]
 mod tests {
-    use super::{GitHubAsset, choose_windows_asset, validate_patch_format, validate_patch_url};
+    use super::{
+        GitHubAsset, choose_windows_installer, parse_github_sha256, validate_installer_name,
+        validate_patch_format, validate_release_url,
+    };
 
     #[test]
     fn rejects_unknown_patch_format() {
@@ -314,9 +431,9 @@ mod tests {
 
     #[test]
     fn rejects_non_official_update_urls() {
-        assert!(validate_patch_url("https://example.com/VxClick.exe").is_err());
+        assert!(validate_release_url("https://example.com/VxClick.exe").is_err());
         assert!(
-            validate_patch_url(
+            validate_release_url(
                 "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick.exe"
             )
             .is_ok()
@@ -324,19 +441,44 @@ mod tests {
     }
 
     #[test]
-    fn full_release_ignores_unrelated_executables() {
+    fn installer_selection_prefers_setup_exe_and_digest() {
+        let hash = "a".repeat(64);
         let assets = vec![
-            GitHubAsset {
-                name: "unrelated.exe".into(),
-                browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/unrelated.exe".into(),
-                size: 1,
-            },
             GitHubAsset {
                 name: "VxClick_1.0.0_x64_en-US.msi".into(),
                 browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick_1.0.0_x64_en-US.msi".into(),
                 size: 2,
+                digest: Some(format!("sha256:{hash}")),
+            },
+            GitHubAsset {
+                name: "VxClick_1.0.0_x64-setup.exe".into(),
+                browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick_1.0.0_x64-setup.exe".into(),
+                size: 1,
+                digest: Some(format!("sha256:{hash}")),
+            },
+            GitHubAsset {
+                name: "VxClick.exe".into(),
+                browser_download_url: "https://github.com/Vxiey/VxClick/releases/download/v1.0.0/VxClick.exe".into(),
+                size: 3,
+                digest: Some(format!("sha256:{hash}")),
             },
         ];
-        assert_eq!(choose_windows_asset(&assets).expect("asset").size, 2);
+        let selected = choose_windows_installer(&assets).expect("installer");
+        assert_eq!(selected.name, "VxClick_1.0.0_x64-setup.exe");
+        assert_eq!(selected.sha256.as_deref(), Some(hash.as_str()));
+    }
+
+    #[test]
+    fn auto_update_rejects_portable_executable() {
+        assert!(validate_installer_name("VxClick.exe").is_err());
+        assert!(validate_installer_name("VxClick_1.0.1_x64-setup.exe").is_ok());
+        assert!(validate_installer_name("VxClick_1.0.1_x64_en-US.msi").is_ok());
+    }
+
+    #[test]
+    fn parses_github_sha256_digest() {
+        let hash = "b".repeat(64);
+        assert_eq!(parse_github_sha256(&format!("sha256:{hash}")), Some(hash));
+        assert!(parse_github_sha256("sha512:abcd").is_none());
     }
 }

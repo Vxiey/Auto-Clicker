@@ -55,6 +55,17 @@ export type MacroSnapshot = {
   playing_macro_id: string | null;
 };
 
+export type StoredLuaScript = {
+  id: string;
+  name: string;
+  script: string;
+};
+
+export type LuaScriptDocument = {
+  schema_version: number;
+  scripts: StoredLuaScript[];
+};
+
 export type StoredRemap = {
   id: string;
   name: string;
@@ -70,6 +81,58 @@ export type RemapDocument = {
   mappings: StoredRemap[];
 };
 
+export type RecoilStep = {
+  x: number;
+  y: number;
+};
+
+export type RecoilRiskAcceptance = {
+  version: number;
+  accepted_at_unix: number;
+  app_version: string;
+};
+
+export type RecoilPreset = {
+  id: string;
+  name: string;
+  character_name: string;
+  weapon_name: string;
+  slot: 1 | 2;
+  enabled: boolean;
+  vertical: number;
+  horizontal: number;
+  rpm: number;
+  activation_mode: "ads-fire" | "fire" | "always";
+  activation_hotkey: string;
+  pattern: RecoilStep[];
+};
+
+export type RecoilGameProfile = {
+  id: string;
+  name: string;
+  process_names: string[];
+  auto_switch: boolean;
+  active_primary_id: string;
+  active_secondary_id: string;
+  presets: RecoilPreset[];
+};
+
+export type RecoilDocument = {
+  schema_version: number;
+  active_game_id: string;
+  active_slot: 1 | 2;
+  games: RecoilGameProfile[];
+  risk_acknowledgement: RecoilRiskAcceptance | null;
+};
+
+export type RecoilSnapshot = {
+  document: RecoilDocument;
+  running: boolean;
+  active_preset_id: string | null;
+  risk_acknowledgement_required: boolean;
+  risk_acknowledgement_version: number;
+};
+
 export type PatchAsset = {
   from_version: string;
   to_version: string;
@@ -83,6 +146,7 @@ export type FullReleaseAsset = {
   name: string;
   url: string;
   size: number;
+  sha256: string | null;
 };
 
 export type UpdateInfo = {
@@ -156,6 +220,13 @@ export const macroApi = {
   stopRecording: () => invoke<MacroEventRecord[]>("stop_macro_recording"),
   validateLua: (script: string) => invoke<number>("validate_lua_script", { script }),
   runLua: (script: string, speed = 1) => invoke<void>("run_lua_script", { script, speed }),
+  luaScripts: () => invoke<LuaScriptDocument>("lua_scripts_snapshot"),
+  saveLuaScript: (scriptDef: StoredLuaScript) =>
+    invoke<StoredLuaScript>("save_lua_script", { scriptDef }),
+  renameLuaScript: (id: string, name: string) =>
+    invoke<StoredLuaScript>("rename_lua_script", { id, name }),
+  duplicateLuaScript: (id: string) => invoke<StoredLuaScript>("duplicate_lua_script", { id }),
+  deleteLuaScript: (id: string) => invoke<void>("delete_lua_script", { id }),
 };
 
 export const remapApi = {
@@ -164,9 +235,47 @@ export const remapApi = {
   remove: (id: string) => invoke<void>("delete_remap", { id }),
 };
 
+export const recoilApi = {
+  snapshot: () => invoke<RecoilSnapshot>("recoil_snapshot"),
+  createGame: (name: string, processName?: string) =>
+    invoke<RecoilGameProfile>("create_recoil_game", { name, processName: processName || null }),
+  saveGame: (game: RecoilGameProfile) => invoke<RecoilGameProfile>("save_recoil_game", { game }),
+  activateGame: (id: string) => invoke<void>("activate_recoil_game", { id }),
+  setSlot: (slot: 1 | 2) => invoke<void>("set_recoil_slot", { slot }),
+  savePreset: (gameId: string, preset: RecoilPreset) =>
+    invoke<RecoilPreset>("save_recoil_preset", { gameId, preset }),
+  acceptRisk: (confirmedAccountRisk: boolean, confirmedThirdPartyRules: boolean) =>
+    invoke<void>("recoil_start", {
+      confirmedAccountRisk,
+      confirmedThirdPartyRules,
+      acceptOnly: true,
+    }),
+  start: () =>
+    invoke<void>("recoil_start", {
+      confirmedAccountRisk: null,
+      confirmedThirdPartyRules: null,
+      acceptOnly: false,
+    }),
+  stop: () => invoke<void>("recoil_stop"),
+};
+
 export const updaterApi = {
   check: () => invoke<UpdateInfo>("check_for_updates"),
   stagePatch: (patch: PatchAsset) => invoke<StagedPatch>("stage_patch", { patch }),
+  installFull: (info: UpdateInfo) => {
+    const asset = info.full_release;
+    if (!asset) return Promise.reject(new Error("No Windows installer is available for this release"));
+    if (!asset.sha256) return Promise.reject(new Error("GitHub did not provide a SHA-256 digest for this installer"));
+    const installer: PatchAsset = {
+      from_version: info.current_version,
+      to_version: info.latest_version,
+      url: asset.url,
+      sha256: asset.sha256,
+      size: asset.size,
+      format: "installer",
+    };
+    return invoke<StagedPatch>("stage_patch", { patch: installer });
+  },
 };
 
 export const diagnosticsApi = {
