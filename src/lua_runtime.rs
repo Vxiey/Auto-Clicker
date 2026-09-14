@@ -45,6 +45,11 @@ impl LuaMacroCompiler {
             .exec()
             .map_err(|error| format!("Lua error: {error}"))?;
 
+        // Lua globals own callbacks which hold Arc clones of the action buffer.
+        // Drop the sandbox first so extraction cannot fail merely because those
+        // callbacks are still registered in the VM.
+        drop(lua);
+
         let actions = Arc::try_unwrap(actions)
             .map_err(|_| "Lua action buffer is still in use".to_string())?
             .into_inner()
