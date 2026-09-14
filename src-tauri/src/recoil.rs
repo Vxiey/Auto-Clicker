@@ -8,9 +8,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use auto_clicker_core::platform::windows::{QpcClock, WindowsInput};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Manager, State};
-use windows_sys::Win32::UI::Input::KeyboardAndMouse::{
-    GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON,
-};
+use windows_sys::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
 
 const RECOIL_SCHEMA_VERSION: u32 = 2;
 const RECOIL_RISK_ACK_VERSION: u32 = 1;
