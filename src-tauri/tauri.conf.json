@@ -28,7 +28,7 @@
     ],
     "trayIcon": {
       "id": "main",
-      "iconPath": "icons/icon.png",
+      "iconPath": "icons/icon.ico",
       "tooltip": "VxClick",
       "showMenuOnLeftClick": false
     },
@@ -39,6 +39,6 @@
   "bundle": {
     "active": true,
     "targets": "all",
-    "icon": ["icons/icon.ico", "icons/icon.png"]
+    "icon": ["icons/icon.ico"]
   }
 }
