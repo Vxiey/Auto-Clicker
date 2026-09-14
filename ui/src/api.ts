@@ -111,17 +111,26 @@ export type RecoilGameProfile = {
   presets: RecoilPreset[];
 };
 
+export type RecoilRiskAcceptance = {
+  version: number;
+  accepted_at_unix: number;
+  app_version: string;
+};
+
 export type RecoilDocument = {
   schema_version: number;
   active_game_id: string;
   active_slot: 1 | 2;
   games: RecoilGameProfile[];
+  risk_acknowledgement: RecoilRiskAcceptance | null;
 };
 
 export type RecoilSnapshot = {
   document: RecoilDocument;
   running: boolean;
   active_preset_id: string | null;
+  risk_acknowledgement_required: boolean;
+  risk_acknowledgement_version: number;
 };
 
 export type PatchAsset = {
@@ -234,7 +243,17 @@ export const recoilApi = {
   setSlot: (slot: 1 | 2) => invoke<void>("set_recoil_slot", { slot }),
   savePreset: (gameId: string, preset: RecoilPreset) =>
     invoke<RecoilPreset>("save_recoil_preset", { gameId, preset }),
-  start: () => invoke<void>("recoil_start"),
+  acceptRisk: (confirmedAccountRisk: boolean, confirmedThirdPartyRules: boolean) =>
+    invoke<void>("recoil_start", {
+      confirmedAccountRisk,
+      confirmedThirdPartyRules,
+      acceptOnly: true,
+    }),
+  start: () => invoke<void>("recoil_start", {
+    confirmedAccountRisk: null,
+    confirmedThirdPartyRules: null,
+    acceptOnly: false,
+  }),
   stop: () => invoke<void>("recoil_stop"),
 };
 
