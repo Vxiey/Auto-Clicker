@@ -37,6 +37,14 @@ See [Timing Engine](Timing-Engine) for the implementation design.
 
 The final 1.0.0 source state passed the Windows CI pipeline including frontend build, Rust formatting checks, core compilation, **27 unit tests**, Clippy with warnings denied and the Tauri compile check.
 
+## License
+
+VxClick 1.0.0 is released under the **MIT License**.
+
+Copyright (c) 2026 Vxiey
+
+See the full [License](License) page or the repository [`LICENSE`](https://github.com/Vxiey/VxClick/blob/main/LICENSE) file.
+
 ## Safety
 
 Emergency Stop requests automation cancellation and performs best-effort release of VxClick-held synthetic inputs.
