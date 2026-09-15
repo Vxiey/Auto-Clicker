@@ -22,10 +22,19 @@ For normal installation, use the x64 setup executable from the official GitHub R
 | [Lua Automation](Lua-Automation) | Validate and run sandboxed Lua automation |
 | [Profiles](Profiles) | Persistent profiles and process auto switching |
 | [Diagnostics](Diagnostics) | Logs, benchmark telemetry and troubleshooting |
+| [License](License) | MIT License terms and copyright notice |
 
 ## Technical documentation
 
 For implementation details, use [Architecture](Architecture), [Timing Engine](Timing-Engine), [Automation Systems](Automation-Systems), [Feature Status](Feature-Status) and the [Development](Development) guide.
+
+## License
+
+VxClick is distributed under the **MIT License**.
+
+Copyright (c) 2026 Vxiey
+
+See the full [License](License) page or the canonical repository [`LICENSE`](https://github.com/Vxiey/VxClick/blob/main/LICENSE) file.
 
 ## Safety
 
