@@ -22,6 +22,7 @@ import {
 } from "lucide-react";
 import type { Profile } from "./api";
 import { BenchmarkPanel } from "./BenchmarkPanel";
+import { DashboardPanel } from "./DashboardPanel";
 import { HotkeyCaptureInput } from "./HotkeyCaptureInput";
 import { KeybindsPanel } from "./KeybindsPanel";
 import { MacroStudio } from "./MacroStudio";
@@ -184,20 +185,7 @@ function PageHeader({ title, subtitle, right }: { title: string; subtitle: strin
 }
 
 function Dashboard({ status, cps, activeProfile, onStart, onStop, open }: { status: EngineStatus; cps: number; activeProfile: string; onStart: () => void; onStop: () => void; open: (page: Page) => void }) {
-  return <div className="page">
-    <PageHeader title="Dashboard" subtitle="Fast access to click automation, macros and the active game profile." right={<StatusPill status={status.running ? "Running" : "Ready"} />} />
-    <div className="grid grid-4">
-      <MetricCard label="Status" value={status.running ? "Running" : "Ready"} accent icon={<Activity size={16} color="var(--cyan)" />} />
-      <MetricCard label="Current CPS" value={(status.actual_cps || 0).toFixed(1)} accent icon={<Gauge size={16} color="var(--accent)" />} />
-      <MetricCard label="Total clicks" value={status.clicks.toLocaleString()} icon={<MousePointer2 size={16} color="var(--muted)" />} />
-      <MetricCard label="Active profile" value={activeProfile} icon={<UserRoundCog size={16} color="var(--muted)" />} />
-    </div>
-    <div className="grid grid-2 section-gap">
-      <Card><h2 className="card-title">Quick controls</h2><div className="card-copy">Target {cps.toLocaleString()} CPS using the Rust precision engine.</div><div className="quick-actions"><Button variant="primary" disabled={status.running} onClick={onStart}><Play size={14} /> Start</Button><Button variant="danger" disabled={!status.running} onClick={onStop}><Square size={13} /> Stop</Button><Button onClick={() => open("recoil")}><Crosshair size={14} /> Recoil Scripts</Button><Button onClick={() => open("macros")}><Sparkles size={14} /> Macro Studio</Button><Button onClick={() => open("keybinds")}><KeyRound size={14} /> Keybinds</Button><Button onClick={() => open("profiles")}><UserRoundCog size={14} /> Profiles</Button></div></Card>
-      <Card><h2 className="card-title">Precision engine</h2><div className="card-copy">Absolute deadlines, native SendInput and sub-millisecond scheduling targets.</div><div className="quick-actions"><span className="profile-chip"><Bolt size={13} /> High performance</span><span className="profile-chip"><Sparkles size={13} /> Sub-ms ready</span></div></Card>
-    </div>
-    <div className="grid grid-2 section-gap"><Card><h2 className="card-title">Activity</h2><div className="card-copy">Live engine status and timing diagnostics are available from Settings.</div><div className="divider" /><div className="inline" style={{ justifyContent: "space-between" }}><span className="card-copy">Click engine</span><span className={`status-pill ${status.running ? "status-running" : "status-ready"}`}>{status.running ? "Running" : "Ready"}</span></div></Card><TrayPreview running={status.running} activeProfile={activeProfile} /></div>
-  </div>;
+  return <DashboardPanel status={status} cps={cps} activeProfile={activeProfile} onStart={onStart} onStop={onStop} open={open} />;
 }
 
 function AutoClicker(props: { status: EngineStatus; cps: number; setCps: (value: number) => void; intervalUs: number; button: string; setButton: (value: string) => void; mode: string; setMode: (value: string) => void; randomize: boolean; setRandomize: (value: boolean) => void; burst: boolean; setBurst: (value: boolean) => void; positionMode: string; setPositionMode: (value: string) => void; positions: string; setPositions: (value: string) => void; startHotkey: string; setStartHotkey: (value: string) => void; stopHotkey: string; setStopHotkey: (value: string) => void; onStart: () => void; onStop: () => void }) {

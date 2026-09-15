@@ -2,6 +2,41 @@
 
 All notable VxClick changes are documented here and mirrored inside the app under **Settings → About & Updates**.
 
+## [1.0.4] - 2026-09-15
+
+### New
+- Rebuilt **Dashboard** with a larger VxClick hero/status area, four feature cards, Quick Actions, live engine telemetry and a dedicated information rail.
+- Dashboard shortcuts for Auto Clicker, Macros, Key Remap, Profiles, Recoil Scripts, Keybinds, Settings and update access.
+
+### Changed
+- Dashboard now uses live engine data for actual CPS, target CPS, session clicks, active profile and engine state instead of generic metric tiles.
+- Dashboard styling is isolated in `DashboardPanel.tsx` and `dashboard.css` so future UI work does not keep growing `App.tsx`.
+- Responsive dashboard layout now collapses the information rail and feature grid cleanly on smaller windows and higher Windows display scaling.
+
+### Fixed
+- Added the missing 1.0.3 and 1.0.4 entries to both repository and in-app changelogs.
+- Release workflow now verifies that the current version exists in `CHANGELOG.md`, the in-app changelog and `docs/releases/vX.Y.Z.md` before publishing.
+
+## [1.0.3] - 2026-09-15
+
+### New
+- Native **press-to-bind hotkey capture** across Auto Clicker, Keybinds and Macro Studio for keyboard keys, modifier chords and Mouse1–Mouse5.
+- Expanded Recoil Script imports for `.lua`, `.ahk`, `.csv`, `.txt` and `.recoil` in addition to `.json` / `.vxrecoil`.
+- Windows system-tray behavior with **Open VxClick** and **Exit VxClick** actions.
+
+### Changed
+- Macro Studio includes **New** and **Duplicate** macro actions.
+- Timeline rows can be moved up/down and duplicated while keeping the existing native playback architecture.
+- Added common keyboard assignments and useful delay presets for faster macro creation.
+- Closing the VxClick window hides it to the tray instead of terminating the automation runtime.
+- Terms of Service and GitHub links open through the Windows default browser instead of relying on WebView `_blank` behavior.
+
+### Fixed
+- Macro recording no longer creates streams of tiny delay-only rows from unsupported mouse-move hook traffic.
+- Recorded event IDs are allocated correctly when delay rows are inserted, avoiding duplicate timeline IDs.
+- Hotkey capture suppresses the captured input briefly so a newly assigned binding does not immediately fire.
+- Fixed About & Updates links that could appear clickable without opening anything in the Tauri WebView.
+
 ## [1.0.2] - 2026-09-15
 
 ### New
