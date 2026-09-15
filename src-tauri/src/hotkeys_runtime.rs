@@ -9,9 +9,10 @@ use auto_clicker_core::hotkeys::HotkeyBinding;
 use auto_clicker_core::platform::windows::{
     GlobalInputRecorder, HotkeyPhase, RegisteredHotkey, WindowsHotkeyManager, WindowsInput,
 };
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::diagnostics::{DiagnosticsState, LogLevel};
+use crate::hotkey_capture::{CaptureOutcome, HotkeyCaptureController};
 use crate::macros::{
     MacroEventRecord, MacroState, StoredMacro, save_macro, start_macro_recording,
     stop_macro_recording,
@@ -51,6 +52,7 @@ struct ActiveProfileConfig {
 pub struct HotkeyRuntime {
     stop: Arc<AtomicBool>,
     thread: Mutex<Option<JoinHandle<()>>>,
+    capture: HotkeyCaptureController,
 }
 
 impl HotkeyRuntime {
@@ -61,6 +63,8 @@ impl HotkeyRuntime {
 
         let stop = Arc::new(AtomicBool::new(false));
         let worker_stop = Arc::clone(&stop);
+        let capture = HotkeyCaptureController::default();
+        let worker_capture = capture.clone();
         let thread = thread::Builder::new()
             .name("vxclick-hotkey-runtime".into())
             .spawn(move || {
@@ -77,7 +81,17 @@ impl HotkeyRuntime {
                     }
 
                     for input in captured.try_iter() {
-                        app.state::<MacroState>().capture(&input);
+                        match worker_capture.process_input(&input) {
+                            CaptureOutcome::NotCapturing => {
+                                if !worker_capture.blocks_hotkey_execution() {
+                                    app.state::<MacroState>().capture(&input);
+                                }
+                            }
+                            CaptureOutcome::Capturing => {}
+                            CaptureOutcome::Completed(result) => {
+                                let _ = app.emit("hotkey-captured", result);
+                            }
+                        }
                     }
 
                     let event = match events.recv_timeout(Duration::from_millis(25)) {
@@ -86,6 +100,13 @@ impl HotkeyRuntime {
                         Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
                     };
                     let diagnostics = app.state::<DiagnosticsState>();
+
+                    // Binding capture must never execute the key being sampled. This also
+                    // prevents F1/F2 from starting/stopping the macro recorder while a user
+                    // is assigning a hotkey and suppresses the just-captured event briefly.
+                    if worker_capture.blocks_hotkey_execution() {
+                        continue;
+                    }
 
                     if event.id == MACRO_RECORD_START_ID && event.phase == HotkeyPhase::Pressed {
                         match start_macro_recording(
@@ -262,8 +283,25 @@ impl HotkeyRuntime {
         Ok(Self {
             stop,
             thread: Mutex::new(Some(thread)),
+            capture,
         })
     }
+}
+
+#[tauri::command]
+pub fn start_hotkey_capture(
+    request_id: String,
+    state: State<'_, HotkeyRuntime>,
+) -> Result<(), String> {
+    state.capture.start(request_id)
+}
+
+#[tauri::command]
+pub fn cancel_hotkey_capture(
+    request_id: String,
+    state: State<'_, HotkeyRuntime>,
+) -> Result<(), String> {
+    state.capture.cancel(&request_id)
 }
 
 fn trim_record_stop_hotkey(events: &mut Vec<MacroEventRecord>) {
