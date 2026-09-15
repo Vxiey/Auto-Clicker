@@ -1,5 +1,33 @@
 export const CHANGELOG = [
   {
+    version: "1.0.5",
+    date: "15.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Added a dedicated Process List navigation tab for managing application-to-profile bindings in one place.",
+          "Process List can bind the current foreground application, add executable names manually, remove saved bindings and control process-based profile auto-switching.",
+        ],
+      },
+      {
+        title: "CHANGED",
+        items: [
+          "Hotkey capture now keeps the capture field active while listening and handles plain keyboard keys, modifier chords, navigation keys, numpad keys and standalone modifiers more reliably.",
+          "GitHub README now uses the optimized dashboard preview asset.",
+        ],
+      },
+      {
+        title: "FIXED",
+        items: [
+          "VxClick now enforces one desktop instance; launching it again restores the existing window instead of starting a competing automation runtime.",
+          "Added the required Windows security API feature for the single-instance mutex implementation.",
+          "Added coverage for plain keyboard hotkey capture and fixed focus loss during capture.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.0.4",
     date: "15.09.2026",
     sections: [

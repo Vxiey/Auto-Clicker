@@ -2,6 +2,21 @@
 
 All notable VxClick changes are documented here and mirrored inside the app under **Settings → About & Updates**.
 
+## [1.0.5] - 2026-09-15
+
+### New
+- Added a dedicated **Process List** navigation tab for managing application-to-profile bindings in one place.
+- Process List can bind the current foreground application, add executable names manually, remove saved bindings and control process-based profile auto-switching.
+
+### Changed
+- Hotkey capture now keeps the capture field active while listening and handles plain keyboard keys, modifier chords, navigation keys, numpad keys and standalone modifiers more reliably.
+- GitHub README now uses the optimized dashboard preview asset.
+
+### Fixed
+- Enforced a single VxClick desktop instance with a Windows named mutex; launching VxClick again restores/foregrounds the existing window instead of starting a competing automation runtime.
+- Added the required Windows security API feature for the single-instance mutex implementation.
+- Added coverage for plain keyboard hotkey capture and fixed focus loss during capture.
+
 ## [1.0.4] - 2026-09-15
 
 ### New
