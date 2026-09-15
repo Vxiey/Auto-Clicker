@@ -83,7 +83,9 @@ impl HotkeyRuntime {
                     for input in captured.try_iter() {
                         match worker_capture.process_input(&input) {
                             CaptureOutcome::NotCapturing => {
-                                app.state::<MacroState>().capture(&input);
+                                if !worker_capture.blocks_hotkey_execution() {
+                                    app.state::<MacroState>().capture(&input);
+                                }
                             }
                             CaptureOutcome::Capturing => {}
                             CaptureOutcome::Completed(result) => {
