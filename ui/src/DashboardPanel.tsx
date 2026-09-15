@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { Button } from "./components";
 import { APP_VERSION } from "./version";
+import "./dashboard.css";
 
 type DashboardPage = "clicker" | "recoil" | "macros" | "keybinds" | "remap" | "profiles" | "settings";
 
