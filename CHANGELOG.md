@@ -2,6 +2,45 @@
 
 All notable VxClick changes are documented here and mirrored inside the app under **Settings → About & Updates**.
 
+## [1.0.2] - 2026-09-15
+
+### New
+- Dedicated **Keybinds** tab for clicker, emergency stop, macro recorder, macro triggers and remap triggers.
+- Keybind conflict detection, including reserved recorder bindings F1/F2.
+- Per-profile **Process List** with individual process removal, executable addition and one-click foreground-process binding.
+- Recoil Script upload/import for `.json` and `.vxrecoil` preset files.
+
+### Changed
+- Profiles show process bindings as removable application entries instead of only comma-separated text.
+- Imported recoil presets receive a new local ID before backend validation/saving.
+- Layouts wrap more cleanly on smaller windows and higher Windows display scaling.
+
+### Fixed
+- Macro Studio now follows native recorder state so F1 start/F2 stop is visible immediately.
+- Completed F1/F2 recordings refresh the saved macro list and surface the saved draft in the UI.
+- Fixed page/content clipping that could hide lower controls or prevent vertical scrolling at some DPI/window sizes.
+
+## [1.0.1] - 2026-09-15
+
+### New
+- Recoil Scripts with multi-game profiles, primary/secondary slots and user-created Game → Character/Operator → Weapon metadata.
+- Persistent Lua Script Library with create, edit, save, upload, rename, duplicate and delete.
+- Global macro recording with F1 to start and F2 to stop, saving recordings as unassigned macro drafts.
+- Keyboard and mouse remapping support including Mouse1–Mouse5.
+- Auto Clicker interval units for milliseconds, seconds, minutes and hours.
+- In-app Terms of Service access with `TERMS.md` and `DISCLAIMER.md`.
+
+### Changed
+- Long click intervals use adaptive waiting to reduce CPU wakeups while keeping stop response fast.
+- Low-CPS validation supports intervals below 1 CPS while retaining the high-CPS safety cap.
+- Updater can select an official Windows installer, verify its GitHub SHA-256 digest, launch it and then exit VxClick.
+- Recorder hotkeys F1/F2 are reserved to prevent conflicts with clicker, macro and remap bindings.
+
+### Fixed
+- Removed process-wide `HIGH_PRIORITY_CLASS` behavior that could starve the UI/system at high click rates.
+- Live click scheduling avoids catch-up bursts after missed deadlines, reducing high-CPS overshoot and lag.
+- Fixed recoil Windows input polling and cleaned Rust formatting/dead-code warnings caught by CI.
+
 ## [1.0.0] - 2026-09-14
 
 ### New
