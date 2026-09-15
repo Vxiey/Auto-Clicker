@@ -3,6 +3,7 @@
 - [Home](Home)
 - [Installation](Installation)
 - [Release 1.0.0](Release-1.0.0)
+- [License](License)
 
 ### Using VxClick
 
@@ -26,4 +27,4 @@
 
 ---
 
-[GitHub repository](https://github.com/Vxiey/VxClick) · [Latest release](https://github.com/Vxiey/VxClick/releases/latest)
+[GitHub repository](https://github.com/Vxiey/VxClick) · [Latest release](https://github.com/Vxiey/VxClick/releases/latest) · [MIT License](License)
