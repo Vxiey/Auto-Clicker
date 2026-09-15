@@ -25,6 +25,7 @@ import {
 } from "lucide-react";
 import { macroApi, type MacroEventRecord, type StoredLuaScript, type StoredMacro } from "./api";
 import { Button, Card, Field, Toggle } from "./components";
+import { HotkeyCaptureInput } from "./HotkeyCaptureInput";
 import "./macro-studio.css";
 
 type MacroType = "no-repeat" | "repeat-hold" | "toggle" | "sequence";
@@ -47,6 +48,8 @@ type Assignment = {
   icon: typeof Zap;
   delayMs?: number;
 };
+
+const RESERVED_RECORDER_KEYS = ["F1", "F2"] as const;
 
 const macroTypes: Array<{ id: MacroType; title: string; copy: string; icon: typeof Zap }> = [
   { id: "no-repeat", title: "No Repeat", copy: "Runs once when the trigger is pressed.", icon: Zap },
@@ -551,7 +554,7 @@ export function MacroStudio() {
                 </select>
               </Field>
               <Field label="Macro name"><input className="input" value={name} onChange={(event) => setName(event.target.value)} /></Field>
-              <Field label="Trigger"><input className="input" value={trigger} onChange={(event) => setTrigger(event.target.value)} /></Field>
+              <Field label="Trigger"><HotkeyCaptureInput value={trigger} onChange={setTrigger} reserved={RESERVED_RECORDER_KEYS} /></Field>
               <Field label="Playback speed"><input className="input" type="number" min="0.1" max="10" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></Field>
             </div>
             <div className="macro-record-controls" style={{ marginTop: 12 }}>
