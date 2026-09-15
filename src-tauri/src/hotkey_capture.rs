@@ -83,6 +83,9 @@ impl HotkeyCaptureController {
             .inner
             .lock()
             .map_err(|_| "hotkey capture mutex poisoned".to_string())?;
+        if session.request_id.is_some() {
+            return Err("another hotkey capture is already active".into());
+        }
         session.request_id = Some(request_id.to_string());
         session.modifiers = ModifierState::default();
         session.suppress_until = None;
@@ -287,6 +290,15 @@ mod tests {
                 binding: None,
             })
         );
+    }
+
+    #[test]
+    fn rejects_overlapping_capture_sessions() {
+        let capture = HotkeyCaptureController::default();
+        capture.start("first".into()).unwrap();
+        assert!(capture.start("second".into()).is_err());
+        capture.cancel("first").unwrap();
+        assert!(capture.start("second".into()).is_ok());
     }
 
     #[test]
