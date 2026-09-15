@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
+  ArrowDown,
+  ArrowUp,
   CircleStop,
   Clock3,
   Code2,
+  Copy,
   Gamepad2,
   GripVertical,
   Keyboard,
@@ -42,6 +45,7 @@ type Assignment = {
   label: string;
   type: MacroEventType;
   icon: typeof Zap;
+  delayMs?: number;
 };
 
 const macroTypes: Array<{ id: MacroType; title: string; copy: string; icon: typeof Zap }> = [
@@ -61,12 +65,22 @@ const assignments: Assignment[] = [
   { category: "keys", label: "F", type: "key-down", icon: Keyboard },
   { category: "keys", label: "Space", type: "key-down", icon: Keyboard },
   { category: "keys", label: "Enter", type: "key-down", icon: Keyboard },
+  { category: "keys", label: "Tab", type: "key-down", icon: Keyboard },
+  { category: "keys", label: "Esc", type: "key-down", icon: Keyboard },
+  { category: "keys", label: "Shift", type: "key-down", icon: Keyboard },
+  { category: "keys", label: "Ctrl", type: "key-down", icon: Keyboard },
+  { category: "keys", label: "Alt", type: "key-down", icon: Keyboard },
   { category: "actions", label: "Left Click", type: "mouse", icon: MousePointerClick },
   { category: "actions", label: "Right Click", type: "mouse", icon: MousePointerClick },
   { category: "actions", label: "Middle Click", type: "mouse", icon: MousePointerClick },
   { category: "actions", label: "Mouse 4", type: "mouse", icon: MousePointerClick },
   { category: "actions", label: "Mouse 5", type: "mouse", icon: MousePointerClick },
-  { category: "actions", label: "50 ms Delay", type: "delay", icon: Clock3 },
+  { category: "actions", label: "10 ms Delay", type: "delay", icon: Clock3, delayMs: 10 },
+  { category: "actions", label: "25 ms Delay", type: "delay", icon: Clock3, delayMs: 25 },
+  { category: "actions", label: "50 ms Delay", type: "delay", icon: Clock3, delayMs: 50 },
+  { category: "actions", label: "100 ms Delay", type: "delay", icon: Clock3, delayMs: 100 },
+  { category: "actions", label: "250 ms Delay", type: "delay", icon: Clock3, delayMs: 250 },
+  { category: "actions", label: "500 ms Delay", type: "delay", icon: Clock3, delayMs: 500 },
   { category: "macros", label: "Quick Action", type: "key-down", icon: ListRestart },
   { category: "macros", label: "Rapid Click", type: "mouse", icon: ListRestart },
   { category: "system", label: "Play / Pause", type: "key-down", icon: Settings2 },
@@ -197,6 +211,23 @@ export function MacroStudio() {
     setEvents(selected.events.map(fromStoredEvent));
   };
 
+  const newMacro = () => {
+    setMacroId("");
+    setName("New Macro");
+    setMacroType("no-repeat");
+    setRepeatDelayMs(25);
+    setSpeed(1);
+    setEvents([]);
+    setError("");
+  };
+
+  const duplicateCurrentMacro = () => {
+    setMacroId("");
+    setName(`${name.trim() || "Macro"} Copy`);
+    setEvents((current) => current.map((event) => ({ ...event, id: nextId++ })));
+    setError("");
+  };
+
   const currentMacro = (): StoredMacro => ({
     id: macroId,
     name,
@@ -239,9 +270,7 @@ export function MacroStudio() {
     setBusy(true);
     try {
       await macroApi.remove(macroId);
-      setMacroId("");
-      setName("New Macro");
-      setEvents([]);
+      newMacro();
       await refresh();
     } catch (reason) {
       setError(String(reason));
@@ -422,13 +451,15 @@ export function MacroStudio() {
   };
 
   const addAssignment = (assignment: Assignment) => {
+    const lane = macroType === "sequence" ? "on-press" : "main";
     if (assignment.type === "delay") {
-      setEvents((current) => [...current, { id: nextId++, type: "delay", label: "50 ms", delayMs: 50, lane: macroType === "sequence" ? "on-press" : "main" }]);
+      const delayMs = assignment.delayMs ?? 50;
+      setEvents((current) => [...current, { id: nextId++, type: "delay", label: `${delayMs} ms`, delayMs, lane }]);
       return;
     }
-    addEvent(assignment.type, macroType === "sequence" ? "on-press" : "main", assignment.label);
+    addEvent(assignment.type, lane, assignment.label);
     if (assignment.type === "key-down") {
-      setEvents((current) => [...current, { id: nextId++, type: "key-up", label: assignment.label, lane: macroType === "sequence" ? "on-press" : "main" }]);
+      setEvents((current) => [...current, { id: nextId++, type: "key-up", label: assignment.label, lane }]);
     }
   };
 
@@ -438,6 +469,31 @@ export function MacroStudio() {
   };
 
   const removeEvent = (id: number) => setEvents((current) => current.filter((event) => event.id !== id));
+
+  const duplicateEvent = (id: number) => {
+    setEvents((current) => {
+      const index = current.findIndex((event) => event.id === id);
+      if (index < 0) return current;
+      const copy = { ...current[index], id: nextId++ };
+      const next = [...current];
+      next.splice(index + 1, 0, copy);
+      return next;
+    });
+  };
+
+  const moveEvent = (id: number, direction: -1 | 1) => {
+    setEvents((current) => {
+      const index = current.findIndex((event) => event.id === id);
+      if (index < 0) return current;
+      const lane = current[index].lane;
+      let target = index + direction;
+      while (target >= 0 && target < current.length && current[target].lane !== lane) target += direction;
+      if (target < 0 || target >= current.length) return current;
+      const next = [...current];
+      [next[index], next[target]] = [next[target], next[index]];
+      return next;
+    });
+  };
 
   return (
     <div className="page macro-page">
@@ -499,6 +555,8 @@ export function MacroStudio() {
               <Field label="Playback speed"><input className="input" type="number" min="0.1" max="10" step="0.1" value={speed} onChange={(event) => setSpeed(Number(event.target.value))} /></Field>
             </div>
             <div className="macro-record-controls" style={{ marginTop: 12 }}>
+              <Button onClick={newMacro}><Plus size={14} /> New</Button>
+              <Button disabled={events.length === 0} onClick={duplicateCurrentMacro}><Copy size={14} /> Duplicate</Button>
               <Button variant={recording ? "danger" : "primary"} disabled={busy} onClick={() => void toggleRecording()}>
                 {recording ? <CircleStop size={14} /> : <Radio size={14} />}{recording ? "Stop native recording" : "Start native recording"}
               </Button>
@@ -517,23 +575,23 @@ export function MacroStudio() {
 
           {macroType === "sequence" ? (
             <div className="macro-sequence-grid">
-              <MacroLane title="On press" lane="on-press" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} />
-              <MacroLane title="While holding" lane="while-holding" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} />
-              <MacroLane title="On release" lane="on-release" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} />
+              <MacroLane title="On press" lane="on-press" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} duplicateEvent={duplicateEvent} moveEvent={moveEvent} />
+              <MacroLane title="While holding" lane="while-holding" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} duplicateEvent={duplicateEvent} moveEvent={moveEvent} />
+              <MacroLane title="On release" lane="on-release" events={events} addEvent={addEvent} removeEvent={removeEvent} updateDelay={updateDelay} duplicateEvent={duplicateEvent} moveEvent={moveEvent} />
             </div>
           ) : (
             <div className="macro-workspace-grid">
               <AssignmentLibrary category={assignmentCategory} setCategory={setAssignmentCategory} search={search} setSearch={setSearch} onAdd={addAssignment} />
               <Card className="macro-timeline-card">
                 <div className="macro-timeline-header">
-                  <div><div className="macro-panel-title">Action timeline</div><div className="macro-panel-copy">Add from Assignments, record global input or edit every event manually.</div></div>
+                  <div><div className="macro-panel-title">Action timeline</div><div className="macro-panel-copy">Add from Assignments, record global input or edit every event manually. Use the row controls to reorder or duplicate actions.</div></div>
                   <div className="macro-add-actions">
                     <button onClick={() => addEvent("key-down")}><Keyboard size={14} /> Key</button>
                     <button onClick={() => addEvent("mouse")}><MousePointerClick size={14} /> Mouse</button>
                     <button onClick={() => addEvent("delay")}><Clock3 size={14} /> Delay</button>
                   </div>
                 </div>
-                <Timeline events={events.filter((event) => event.lane === "main")} removeEvent={removeEvent} updateDelay={updateDelay} />
+                <Timeline events={events.filter((event) => event.lane === "main")} removeEvent={removeEvent} updateDelay={updateDelay} duplicateEvent={duplicateEvent} moveEvent={moveEvent} />
               </Card>
             </div>
           )}
@@ -621,22 +679,27 @@ function AssignmentLibrary({ category, setCategory, search, setSearch, onAdd }: 
   );
 }
 
-function MacroLane({ title, lane, events, addEvent, removeEvent, updateDelay }: { title: string; lane: Lane; events: MacroEvent[]; addEvent: (type: MacroEventType, lane?: Lane, label?: string) => void; removeEvent: (id: number) => void; updateDelay: (id: number, delayMs: number) => void }) {
+function MacroLane({ title, lane, events, addEvent, removeEvent, updateDelay, duplicateEvent, moveEvent }: { title: string; lane: Lane; events: MacroEvent[]; addEvent: (type: MacroEventType, lane?: Lane, label?: string) => void; removeEvent: (id: number) => void; updateDelay: (id: number, delayMs: number) => void; duplicateEvent: (id: number) => void; moveEvent: (id: number, direction: -1 | 1) => void }) {
   const laneEvents = events.filter((event) => event.lane === lane);
   return <Card className="macro-lane-card">
     <div className="macro-lane-header"><div><div className="macro-panel-title">{title}</div><div className="macro-panel-copy">{laneEvents.length} timeline items</div></div><button className="macro-round-add" onClick={() => addEvent("key-down", lane)}><Plus size={14} /></button></div>
-    <Timeline events={laneEvents} removeEvent={removeEvent} updateDelay={updateDelay} compact />
+    <Timeline events={laneEvents} removeEvent={removeEvent} updateDelay={updateDelay} duplicateEvent={duplicateEvent} moveEvent={moveEvent} compact />
     <div className="macro-lane-actions"><button onClick={() => addEvent("key-down", lane)}><Keyboard size={13} /> Key</button><button onClick={() => addEvent("mouse", lane)}><MousePointerClick size={13} /> Mouse</button><button onClick={() => addEvent("delay", lane)}><Clock3 size={13} /> Delay</button></div>
   </Card>;
 }
 
-function Timeline({ events, removeEvent, updateDelay, compact = false }: { events: MacroEvent[]; removeEvent: (id: number) => void; updateDelay: (id: number, delayMs: number) => void; compact?: boolean }) {
+function Timeline({ events, removeEvent, updateDelay, duplicateEvent, moveEvent, compact = false }: { events: MacroEvent[]; removeEvent: (id: number) => void; updateDelay: (id: number, delayMs: number) => void; duplicateEvent: (id: number) => void; moveEvent: (id: number, direction: -1 | 1) => void; compact?: boolean }) {
   if (events.length === 0) return <div className="macro-empty"><Gamepad2 size={22} /><strong>No actions yet</strong><span>Record input or add an assignment.</span></div>;
   return <div className={`macro-timeline ${compact ? "compact" : ""}`}>
-    {events.map((event, index) => <div key={event.id} className={`macro-event macro-event-${event.type}`}>
+    {events.map((event, index) => <div key={event.id} className={`macro-event macro-event-${event.type}`} style={{ gridTemplateColumns: compact ? "28px 25px minmax(0,1fr) 112px" : "32px 18px 30px minmax(0,1fr) 112px" }}>
       <div className="macro-event-index">{index + 1}</div><GripVertical size={14} className="macro-drag" /><div className="macro-event-icon">{eventIcon(event.type)}</div>
       <div className="macro-event-main"><strong>{eventLabel(event.type)}</strong>{event.type === "delay" ? <div className="macro-inline-delay"><input type="number" min="0" max="60000" value={event.delayMs ?? 0} onChange={(input) => updateDelay(event.id, Number(input.target.value))} /><span>ms</span></div> : <span>{event.label}</span>}</div>
-      <button className="macro-event-delete" onClick={() => removeEvent(event.id)}><Trash2 size={13} /></button>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 1 }}>
+        <button className="macro-event-delete" style={{ color: "var(--muted)" }} title="Move up" disabled={index === 0} onClick={() => moveEvent(event.id, -1)}><ArrowUp size={13} /></button>
+        <button className="macro-event-delete" style={{ color: "var(--muted)" }} title="Move down" disabled={index === events.length - 1} onClick={() => moveEvent(event.id, 1)}><ArrowDown size={13} /></button>
+        <button className="macro-event-delete" style={{ color: "var(--muted)" }} title="Duplicate action" onClick={() => duplicateEvent(event.id)}><Copy size={13} /></button>
+        <button className="macro-event-delete" title="Delete action" onClick={() => removeEvent(event.id)}><Trash2 size={13} /></button>
+      </div>
     </div>)}
   </div>;
 }
