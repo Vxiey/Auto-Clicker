@@ -7,9 +7,37 @@ use std::time::{SystemTime, UNIX_EPOCH};
 use serde::Serialize;
 use tauri::{AppHandle, Manager, State};
 
+#[cfg(windows)]
+use windows_sys::Win32::Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, GetLastError, HANDLE};
+#[cfg(windows)]
+use windows_sys::Win32::System::Threading::CreateMutexW;
+#[cfg(windows)]
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    FindWindowW, SW_RESTORE, SetForegroundWindow, ShowWindow,
+};
+
 const MAX_SESSION_LOGS: usize = 8;
 const MAX_LOG_BYTES: u64 = 2 * 1024 * 1024;
 const MAX_MESSAGE_CHARS: usize = 8_192;
+
+#[cfg(windows)]
+struct SingleInstanceGuard(HANDLE);
+
+#[cfg(windows)]
+impl Drop for SingleInstanceGuard {
+    fn drop(&mut self) {
+        if !self.0.is_null() {
+            unsafe {
+                CloseHandle(self.0);
+            }
+        }
+    }
+}
+
+#[cfg(windows)]
+unsafe impl Send for SingleInstanceGuard {}
+#[cfg(windows)]
+unsafe impl Sync for SingleInstanceGuard {}
 
 #[derive(Debug, Clone, Copy)]
 pub enum LogLevel {
@@ -42,6 +70,8 @@ struct DiagnosticsInner {
     performance_log: PathBuf,
     session_id: String,
     write_lock: Mutex<()>,
+    #[cfg(windows)]
+    _single_instance: SingleInstanceGuard,
 }
 
 #[derive(Debug, Serialize)]
@@ -58,6 +88,9 @@ pub struct DiagnosticsSnapshot {
 
 impl DiagnosticsState {
     pub fn initialize(app: &AppHandle) -> Result<Self, String> {
+        #[cfg(windows)]
+        let single_instance = acquire_single_instance()?;
+
         let directory = app
             .path()
             .app_log_dir()
@@ -82,6 +115,8 @@ impl DiagnosticsState {
                 performance_log,
                 session_id,
                 write_lock: Mutex::new(()),
+                #[cfg(windows)]
+                _single_instance: single_instance,
             }),
         };
 
@@ -208,6 +243,48 @@ impl DiagnosticsState {
         }
         Ok(())
     }
+}
+
+#[cfg(windows)]
+fn acquire_single_instance() -> Result<SingleInstanceGuard, String> {
+    let mutex_name = wide_null("Local\\VxClick.SingleInstance");
+    let handle = unsafe { CreateMutexW(std::ptr::null(), 0, mutex_name.as_ptr()) };
+    if handle.is_null() {
+        return Err(format!(
+            "failed to create single-instance mutex: Windows error {}",
+            unsafe { GetLastError() }
+        ));
+    }
+
+    let already_running = unsafe { GetLastError() } == ERROR_ALREADY_EXISTS;
+    if already_running {
+        show_existing_vxclick_window();
+        unsafe {
+            CloseHandle(handle);
+        }
+        std::process::exit(0);
+    }
+
+    Ok(SingleInstanceGuard(handle))
+}
+
+#[cfg(windows)]
+fn show_existing_vxclick_window() {
+    let title = wide_null("VxClick");
+    let window = unsafe { FindWindowW(std::ptr::null(), title.as_ptr()) };
+    if window.is_null() {
+        return;
+    }
+
+    unsafe {
+        ShowWindow(window, SW_RESTORE);
+        SetForegroundWindow(window);
+    }
+}
+
+#[cfg(windows)]
+fn wide_null(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
 #[tauri::command]

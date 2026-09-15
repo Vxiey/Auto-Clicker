@@ -10,6 +10,7 @@ import {
   Keyboard,
   KeyRound,
   LayoutDashboard,
+  ListTree,
   Maximize2,
   Minimize2,
   MousePointer2,
@@ -26,6 +27,7 @@ import { DashboardPanel } from "./DashboardPanel";
 import { HotkeyCaptureInput } from "./HotkeyCaptureInput";
 import { KeybindsPanel } from "./KeybindsPanel";
 import { MacroStudio } from "./MacroStudio";
+import { ProcessListPanel } from "./ProcessListPanel";
 import { ProfilesPanel } from "./ProfilesPanel";
 import { RecoilScripts } from "./RecoilScripts";
 import { RemapPanel } from "./RemapPanel";
@@ -33,7 +35,7 @@ import { UpdatePanel } from "./UpdatePanel";
 import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./components";
 import { APP_VERSION } from "./version";
 
-type Page = "dashboard" | "clicker" | "recoil" | "macros" | "keybinds" | "remap" | "profiles" | "settings";
+type Page = "dashboard" | "clicker" | "recoil" | "macros" | "keybinds" | "remap" | "processes" | "profiles" | "settings";
 type EngineStatus = { running: boolean; clicks: number; actual_cps: number; target_cps: number };
 type IntervalUnit = "ms" | "seconds" | "minutes" | "hours";
 
@@ -54,6 +56,7 @@ const nav = [
   ["macros", "Macros", Sparkles],
   ["keybinds", "Keybinds", KeyRound],
   ["remap", "Key Remap", Keyboard],
+  ["processes", "Process List", ListTree],
   ["profiles", "Profiles", UserRoundCog],
   ["settings", "Settings", Settings],
 ] as const;
@@ -172,6 +175,7 @@ export default function App() {
           {page === "macros" && <MacroStudio />}
           {page === "keybinds" && <KeybindsPanel />}
           {page === "remap" && <RemapPanel />}
+          {page === "processes" && <ProcessListPanel />}
           {page === "profiles" && <ProfilesPanel onActiveProfile={applyProfile} />}
           {page === "settings" && <SettingsPage tray={tray} setTray={setTray} startup={startup} setStartup={setStartup} diagnostics={diagnostics} setDiagnostics={setDiagnostics} />}
         </div>

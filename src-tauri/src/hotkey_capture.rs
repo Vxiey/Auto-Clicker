@@ -251,6 +251,24 @@ mod tests {
     }
 
     #[test]
+    fn captures_plain_keyboard_key() {
+        let capture = HotkeyCaptureController::default();
+        capture.start("plain".into()).unwrap();
+        let result = capture.process_input(&input(CapturedInputKind::KeyDown {
+            virtual_key: b'G' as u16,
+            scan_code: 0x22,
+            extended: false,
+        }));
+        assert_eq!(
+            result,
+            CaptureOutcome::Completed(super::HotkeyCaptureResult {
+                request_id: "plain".into(),
+                binding: Some("G".into()),
+            })
+        );
+    }
+
+    #[test]
     fn captures_modifier_chord() {
         let capture = HotkeyCaptureController::default();
         capture.start("test".into()).unwrap();
