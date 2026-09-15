@@ -9,12 +9,15 @@ import {
   type StoredRemap,
 } from "./api";
 import { Button, Card, Field } from "./components";
+import { HotkeyCaptureInput } from "./HotkeyCaptureInput";
 
 type BindingEntry = {
   id: string;
   label: string;
   value: string;
 };
+
+const RESERVED_RECORDER_KEYS = ["F1", "F2"] as const;
 
 function canonical(value: string) {
   return value.trim().toLowerCase().replace(/[\s_-]+/g, "");
@@ -213,7 +216,7 @@ export function KeybindsPanel() {
       <div className="grid grid-2 section-gap">
         <Card>
           <h2 className="card-title"><KeyRound size={15} style={{ display: "inline", marginRight: 7 }} />Clicker keybinds</h2>
-          <div className="card-copy">Hotkeys belong to a profile. F1/F2 are reserved for macro recording.</div>
+          <div className="card-copy">Click Bind, then press a keyboard key, chord or Mouse1–Mouse5. F1/F2 are reserved for macro recording.</div>
           <div className="section-gap">
             <Field label="Profile">
               <select className="select" value={profileId} onChange={(event) => setProfileId(event.target.value)}>
@@ -222,8 +225,8 @@ export function KeybindsPanel() {
             </Field>
           </div>
           <div className="form-row section-gap">
-            <Field label="Start / toggle"><input className="input" value={startHotkey} onChange={(event) => setStartHotkey(event.target.value)} /></Field>
-            <Field label="Emergency stop"><input className="input" value={stopHotkey} onChange={(event) => setStopHotkey(event.target.value)} /></Field>
+            <Field label="Start / toggle"><HotkeyCaptureInput value={startHotkey} onChange={setStartHotkey} reserved={RESERVED_RECORDER_KEYS} /></Field>
+            <Field label="Emergency stop"><HotkeyCaptureInput value={stopHotkey} onChange={setStopHotkey} reserved={RESERVED_RECORDER_KEYS} /></Field>
           </div>
           <div className="quick-actions"><Button variant="primary" disabled={busy || !selectedProfile} onClick={() => void saveProfileHotkeys()}><Save size={14} /> Save clicker keybinds</Button></div>
         </Card>
@@ -241,7 +244,7 @@ export function KeybindsPanel() {
       <div className="grid grid-2 section-gap">
         <Card>
           <h2 className="card-title">Macro triggers</h2>
-          <div className="card-copy">Use “(unassigned)” for a saved macro that should not have a global trigger.</div>
+          <div className="card-copy">Click Bind to capture a trigger, or type one manually. Use “(unassigned)” for no global trigger.</div>
           <div className="section-gap" style={{ display: "grid", gap: 10 }}>
             {macros.length === 0 && <div className="card-copy">No saved macros.</div>}
             {macros.map((macro) => {
@@ -250,7 +253,11 @@ export function KeybindsPanel() {
               return (
                 <div key={macro.id} className="form-row" style={{ alignItems: "end" }}>
                   <Field label={macro.name}>
-                    <input className="input" value={value} onChange={(event) => setMacroDrafts((current) => ({ ...current, [macro.id]: event.target.value }))} />
+                    <HotkeyCaptureInput
+                      value={value}
+                      onChange={(next) => setMacroDrafts((current) => ({ ...current, [macro.id]: next }))}
+                      reserved={RESERVED_RECORDER_KEYS}
+                    />
                   </Field>
                   <div className="inline" style={{ alignItems: "center", flexWrap: "wrap" }}>
                     <Button disabled={busy || Boolean(conflict)} onClick={() => void saveMacroTrigger(macro)}><Save size={13} /> Save</Button>
@@ -264,7 +271,7 @@ export function KeybindsPanel() {
 
         <Card>
           <h2 className="card-title">Remap triggers</h2>
-          <div className="card-copy">Keyboard keys, chords and Mouse1–Mouse5 can be edited here. Actions remain in the Remap tab.</div>
+          <div className="card-copy">Keyboard keys, chords and Mouse1–Mouse5 can be captured here. Actions remain in the Remap tab.</div>
           <div className="section-gap" style={{ display: "grid", gap: 10 }}>
             {remaps.length === 0 && <div className="card-copy">No saved remaps.</div>}
             {remaps.map((mapping) => {
@@ -273,7 +280,11 @@ export function KeybindsPanel() {
               return (
                 <div key={mapping.id} className="form-row" style={{ alignItems: "end" }}>
                   <Field label={`${mapping.name} → ${mapping.action}`}>
-                    <input className="input" value={value} onChange={(event) => setRemapDrafts((current) => ({ ...current, [mapping.id]: event.target.value }))} />
+                    <HotkeyCaptureInput
+                      value={value}
+                      onChange={(next) => setRemapDrafts((current) => ({ ...current, [mapping.id]: next }))}
+                      reserved={RESERVED_RECORDER_KEYS}
+                    />
                   </Field>
                   <div className="inline" style={{ alignItems: "center", flexWrap: "wrap" }}>
                     <Button disabled={busy || Boolean(conflict)} onClick={() => void saveRemapTrigger(mapping)}><Save size={13} /> Save</Button>
