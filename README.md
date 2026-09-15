@@ -17,7 +17,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/Vxclick.png" width="900" alt="VxClick application preview" />
+  <img src="assets/VxClick-dashboard.png" width="900" alt="VxClick Dashboard" />
 </p>
 
 VxClick is a clean-room Windows automation project focused on **stable timing, low input latency, low overhead and safe start/stop behavior**. The native core uses Windows APIs for high-resolution timing and input injection, while the desktop application uses Tauri + React for the UI.
