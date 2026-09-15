@@ -22,7 +22,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/VxClick-dashboard.png" width="900" alt="VxClick Windows auto clicker and input automation dashboard" />
+  <img src="assets/VxClick-dashboard.jpg" width="900" alt="VxClick Windows auto clicker and input automation dashboard" />
 </p>
 
 VxClick is a **free, open-source Windows auto clicker and input automation desktop app** for precise CPS control, keyboard and mouse macros, global hotkeys, key/mouse remapping and advanced timing profiles. Its native Rust core uses Windows high-resolution timing and `SendInput` to prioritize stable timing, low input latency, low overhead and safe start/stop behavior.
