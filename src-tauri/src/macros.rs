@@ -169,6 +169,13 @@ impl MacroState {
             return;
         }
 
+        // Only record timing for inputs that are actually representable by the macro engine.
+        // Mouse-move hook traffic is intentionally ignored; letting it advance last_ticks or
+        // emit delays creates streams of 1-3 ms delay-only events while the user moves the mouse.
+        let Some(mut record) = captured_to_record(input, 0, &session.lane) else {
+            return;
+        };
+
         if session.record_delays {
             if let Some(last) = session.last_ticks {
                 let elapsed = self
@@ -191,12 +198,8 @@ impl MacroState {
             }
         }
 
-        let converted = captured_to_record(input, session.next_id, &session.lane);
-        if let Some(mut record) = converted {
-            session.next_id = session.next_id.saturating_add(1);
-            record.id = record.id.max(1);
-            session.events.push(record);
-        }
+        record.id = next_record_id(&mut session);
+        session.events.push(record);
         session.last_ticks = Some(input.qpc_ticks);
     }
 
