@@ -1,10 +1,12 @@
-<h1 align="center">VxClick</h1>
+<h1 align="center">VxClick — Windows Auto Clicker & Input Automation</h1>
 
 <p align="center">
-  High-precision Windows automation built around a Rust timing and input core.
+  Fast, open-source Windows auto clicker, macro recorder, keyboard/mouse automation and remapping powered by a high-precision Rust core.
 </p>
 
 <p align="center">
+  <a href="https://github.com/Vxiey/VxClick/releases/latest"><img alt="Latest release" src="https://img.shields.io/github/v/release/Vxiey/VxClick" /></a>
+  <a href="https://github.com/Vxiey/VxClick/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/Vxiey/VxClick/actions/workflows/ci.yml/badge.svg" /></a>
   <img alt="Platform" src="https://img.shields.io/badge/platform-Windows-0078D4" />
   <img alt="Core" src="https://img.shields.io/badge/core-Rust-000000" />
   <img alt="Desktop" src="https://img.shields.io/badge/desktop-Tauri%202-24C8DB" />
@@ -13,14 +15,23 @@
 </p>
 
 <p align="center">
-  <img src="assets/VxClick-dashboard.png" width="900" alt="VxClick Dashboard" />
+  <a href="https://github.com/Vxiey/VxClick/releases/latest"><strong>Download VxClick</strong></a>
+  · <a href="docs/getting-started.md">Getting started</a>
+  · <a href="docs/README.md">Documentation</a>
+  · <a href="https://github.com/Vxiey/VxClick/wiki">Wiki</a>
 </p>
 
-VxClick is a clean-room Windows automation project focused on **stable timing, low input latency, low overhead and safe start/stop behavior**. The native core uses Windows APIs for high-resolution timing and input injection, while the desktop application uses Tauri + React for the UI.
+<p align="center">
+  <img src="assets/VxClick-dashboard.png" width="900" alt="VxClick Windows auto clicker and input automation dashboard" />
+</p>
 
-> **Release status:** v1.0.0 feature wiring is complete. The release path includes native profile-aware hotkeys, persistent Macro Studio recording/playback, runtime key/mouse remapping, sandboxed Lua automation, randomization/burst/position modes, diagnostics, updater support and Windows release bundles.
+VxClick is a **free, open-source Windows auto clicker and input automation desktop app** for precise CPS control, keyboard and mouse macros, global hotkeys, key/mouse remapping and advanced timing profiles. Its native Rust core uses Windows high-resolution timing and `SendInput` to prioritize stable timing, low input latency, low overhead and safe start/stop behavior.
 
-## Highlights
+Unlike a basic autoclicker built around a simple `sleep()` loop, VxClick uses absolute deadlines, drift correction, oversleep compensation and hybrid sleep/yield/spin waiting. The desktop application is built with Tauri 2 + React 19 while timing-critical automation stays in native Rust.
+
+> **Current stable release:** v1.0.2. The release path includes native profile-aware hotkeys, persistent Macro Studio recording/playback, runtime key/mouse remapping, sandboxed Lua automation, randomization/burst/position modes, diagnostics, updater support and Windows release bundles.
+
+## Windows auto clicker & automation features
 
 - QPC (`QueryPerformanceCounter`) monotonic high-resolution clock.
 - Absolute scheduling deadlines to avoid cumulative interval drift.
@@ -66,9 +77,9 @@ Full details: **[docs/features.md](docs/features.md)**.
 - Windows 10/11 x64
 - Microsoft Edge WebView2 Runtime
 
-### Install VxClick 1.0.0
+### Download VxClick for Windows
 
-Download the installer or portable `VxClick.exe` from the **GitHub Release**. The Windows release workflow also publishes a verified build artifact for each release commit.
+Download the latest portable `VxClick.exe`, Windows setup executable or MSI package from **[GitHub Releases](https://github.com/Vxiey/VxClick/releases/latest)**.
 
 ### Build from source
 
@@ -128,14 +139,12 @@ Tauri desktop bridge (src-tauri/)
         ├── profiles / diagnostics / updater / benchmark
         │
         ├── native hotkey / macro / remap runtime
-        │
         ▼
 Rust automation core (src/)
         │
         ├── precision scheduler + telemetry
         ├── macro player / remap / hotkey models
         ├── Lua runtime
-        │
         ▼
 Windows platform layer
         ├── QueryPerformanceCounter
