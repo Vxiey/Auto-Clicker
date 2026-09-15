@@ -139,12 +139,14 @@ Tauri desktop bridge (src-tauri/)
         ├── profiles / diagnostics / updater / benchmark
         │
         ├── native hotkey / macro / remap runtime
+        │
         ▼
 Rust automation core (src/)
         │
         ├── precision scheduler + telemetry
         ├── macro player / remap / hotkey models
         ├── Lua runtime
+        │
         ▼
 Windows platform layer
         ├── QueryPerformanceCounter
