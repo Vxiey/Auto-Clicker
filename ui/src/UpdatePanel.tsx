@@ -16,6 +16,40 @@ import { APP_VERSION } from "./version";
 
 const CHANGELOG = [
   {
+    version: "1.0.1",
+    date: "15.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Recoil Scripts with multi-game profiles, primary/secondary slots and user-created Game -> Character/Operator -> Weapon metadata.",
+          "Persistent Lua Script Library with create, edit, save, upload, rename, duplicate and delete.",
+          "Global macro recording with F1 to start and F2 to stop, saving recordings as unassigned macro drafts.",
+          "Keyboard and mouse remapping support including Mouse1-Mouse5.",
+          "Auto Clicker interval units for milliseconds, seconds, minutes and hours.",
+          "In-app Terms of Service access with TERMS.md and DISCLAIMER.md.",
+        ],
+      },
+      {
+        title: "CHANGED",
+        items: [
+          "Long click intervals use adaptive waiting to reduce CPU wakeups while keeping stop response fast.",
+          "Low-CPS validation supports intervals below 1 CPS while retaining the high-CPS safety cap.",
+          "Updater can select an official Windows installer, verify its GitHub SHA-256 digest, launch it and then exit VxClick.",
+          "Recorder hotkeys F1/F2 are reserved to prevent conflicts with clicker, macro and remap bindings.",
+        ],
+      },
+      {
+        title: "FIXED",
+        items: [
+          "Removed process-wide HIGH_PRIORITY_CLASS behavior that could starve the UI/system at high click rates.",
+          "Live click scheduling avoids catch-up bursts after missed deadlines, reducing high-CPS overshoot and lag.",
+          "Fixed recoil Windows input polling and cleaned Rust formatting/dead-code warnings caught by CI.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.0.0",
     date: "14.09.2026",
     sections: [
