@@ -40,12 +40,18 @@ use recoil::{
 };
 use remaps::{RemapState, delete_remap, remaps_snapshot, save_remap};
 use serde::Serialize;
-use tauri::{Manager, State};
+use tauri::{
+    Manager, State,
+    menu::{Menu, MenuItem},
+    tray::{MouseButton as TrayMouseButton, MouseButtonState, TrayIconEvent},
+};
 use updater::{check_for_updates, stage_patch};
 
 const MIN_CLICKER_CPS: f64 = 1.0 / 604_800.0; // one click per week
 const MAX_CLICKER_CPS: f64 = 20_000.0;
 const VXCLICK_GITHUB_URL: &str = "https://github.com/Vxiey/VxClick";
+const TRAY_OPEN_ID: &str = "tray-open";
+const TRAY_EXIT_ID: &str = "tray-exit";
 
 struct SampleState {
     at: Instant,
@@ -305,6 +311,15 @@ fn open_external_url(url: String) -> Result<(), String> {
         .map_err(|error| format!("failed to open external link: {error}"))
 }
 
+fn show_main_window(app: &tauri::AppHandle) {
+    let Some(window) = app.get_webview_window("main") else {
+        return;
+    };
+    let _ = window.unminimize();
+    let _ = window.show();
+    let _ = window.set_focus();
+}
+
 fn parse_positions(mode: &str, value: &str) -> Result<Vec<(i32, i32)>, String> {
     match mode.trim().to_ascii_lowercase().as_str() {
         "cursor" | "" => Ok(Vec::new()),
@@ -352,11 +367,42 @@ fn parse_point(value: &str) -> Result<(i32, i32), String> {
 fn main() {
     tauri::Builder::default()
         .manage(EngineState::default())
+        .on_menu_event(|app, event| match event.id().as_ref() {
+            TRAY_OPEN_ID => show_main_window(app),
+            TRAY_EXIT_ID => app.exit(0),
+            _ => {}
+        })
+        .on_tray_icon_event(|app, event| {
+            if let TrayIconEvent::Click {
+                button: TrayMouseButton::Left,
+                button_state: MouseButtonState::Up,
+                ..
+            } = event
+            {
+                show_main_window(app);
+            }
+        })
+        .on_window_event(|window, event| {
+            if window.label() != "main" {
+                return;
+            }
+            if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                api.prevent_close();
+                let _ = window.hide();
+            }
+        })
         .setup(|app| {
             let diagnostics =
                 DiagnosticsState::initialize(app.handle()).map_err(std::io::Error::other)?;
             diagnostics.install_panic_hook();
             app.manage(diagnostics.clone());
+
+            if let Some(tray) = app.tray_by_id("main") {
+                let open_item = MenuItem::with_id(app, TRAY_OPEN_ID, "Open VxClick", true, None::<&str>)?;
+                let exit_item = MenuItem::with_id(app, TRAY_EXIT_ID, "Exit VxClick", true, None::<&str>)?;
+                let menu = Menu::with_items(app, &[&open_item, &exit_item])?;
+                tray.set_menu(Some(menu))?;
+            }
 
             let profiles = match ProfileState::load(app.handle()) {
                 Ok(profiles) => profiles,
