@@ -27,6 +27,56 @@ jobs:
       - name: Install frontend dependencies
         run: npm install
 
+      - name: Validate release metadata
+        id: release_meta
+        shell: pwsh
+        run: |
+          $config = Get-Content "src-tauri/tauri.conf.json" -Raw | ConvertFrom-Json
+          $version = [string]$config.version
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "src-tauri/tauri.conf.json does not contain a version"
+          }
+
+          $rootCargo = Get-Content "Cargo.toml" -Raw
+          if (-not $rootCargo.Contains("version = `"$version`"")) {
+            throw "Cargo.toml is not synchronized to version $version"
+          }
+
+          $tauriCargo = Get-Content "src-tauri/Cargo.toml" -Raw
+          if (-not $tauriCargo.Contains("version = `"$version`"")) {
+            throw "src-tauri/Cargo.toml is not synchronized to version $version"
+          }
+
+          $package = Get-Content "package.json" -Raw | ConvertFrom-Json
+          if ([string]$package.version -ne $version) {
+            throw "package.json is not synchronized to version $version"
+          }
+
+          $uiVersion = Get-Content "ui/src/version.ts" -Raw
+          if (-not $uiVersion.Contains("APP_VERSION = `"$version`"")) {
+            throw "ui/src/version.ts is not synchronized to version $version"
+          }
+
+          $changelog = Get-Content "CHANGELOG.md" -Raw
+          if (-not $changelog.Contains("## [$version]")) {
+            throw "CHANGELOG.md is missing version $version"
+          }
+
+          $uiChangelog = Get-Content "ui/src/changelog.ts" -Raw
+          $uiMarker = 'version: "' + $version + '"'
+          if (-not $uiChangelog.Contains($uiMarker)) {
+            throw "ui/src/changelog.ts is missing version $version"
+          }
+
+          $notesPath = "docs/releases/v$version.md"
+          if (-not (Test-Path $notesPath)) {
+            throw "Missing release notes: $notesPath"
+          }
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "notes_path=$notesPath" >> $env:GITHUB_OUTPUT
+          Write-Host "Release metadata verified for VxClick $version"
+
       - name: Build VxClick Windows bundles
         run: npm run tauri:build
 
@@ -68,13 +118,21 @@ jobs:
           compression-level: 6
           retention-days: 30
 
-      - name: Publish VxClick 1.0.3 GitHub Release
-        if: "${{ github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: VxClick 1.0.3') }}"
+      - name: Publish VxClick GitHub Release
+        if: "${{ github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: VxClick ') }}"
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
+          VX_VERSION: ${{ steps.release_meta.outputs.version }}
+          RELEASE_NOTES: ${{ steps.release_meta.outputs.notes_path }}
+          RELEASE_MESSAGE: ${{ github.event.head_commit.message }}
         run: |
-          $tag = "v1.0.3"
+          $expectedPrefix = "release: VxClick $env:VX_VERSION"
+          if (-not $env:RELEASE_MESSAGE.StartsWith($expectedPrefix)) {
+            throw "Release commit message must start with '$expectedPrefix'"
+          }
+
+          $tag = "v$env:VX_VERSION"
           $releaseSha = $env:GITHUB_SHA
 
           git config user.name "github-actions[bot]"
@@ -84,9 +142,9 @@ jobs:
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $tag --target $releaseSha --title "VxClick 1.0.3" --notes-file "docs/releases/v1.0.3.md"
+            gh release edit $tag --target $releaseSha --title "VxClick $env:VX_VERSION" --notes-file $env:RELEASE_NOTES
           } else {
-            gh release create $tag --target $releaseSha --title "VxClick 1.0.3" --notes-file "docs/releases/v1.0.3.md"
+            gh release create $tag --target $releaseSha --title "VxClick $env:VX_VERSION" --notes-file $env:RELEASE_NOTES
           }
 
           Get-ChildItem -Path artifacts -Recurse -File | ForEach-Object {
