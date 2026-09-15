@@ -2,6 +2,7 @@
 
 mod benchmark;
 mod diagnostics;
+mod hotkey_capture;
 mod hotkeys_runtime;
 mod lua_scripts;
 mod macros;
@@ -20,7 +21,7 @@ use benchmark::run_precision_benchmark;
 use diagnostics::{
     DiagnosticsState, LogLevel, clear_diagnostics, diagnostics_client_log, diagnostics_snapshot,
 };
-use hotkeys_runtime::HotkeyRuntime;
+use hotkeys_runtime::{HotkeyRuntime, cancel_hotkey_capture, start_hotkey_capture};
 use lua_scripts::{
     LuaScriptState, delete_lua_script, duplicate_lua_script, lua_scripts_snapshot,
     rename_lua_script, save_lua_script,
@@ -409,6 +410,8 @@ fn main() {
             start_clicker,
             stop_clicker,
             open_external_url,
+            start_hotkey_capture,
+            cancel_hotkey_capture,
             run_precision_benchmark,
             diagnostics_snapshot,
             diagnostics_client_log,
