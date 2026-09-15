@@ -44,6 +44,7 @@ use updater::{check_for_updates, stage_patch};
 
 const MIN_CLICKER_CPS: f64 = 1.0 / 604_800.0; // one click per week
 const MAX_CLICKER_CPS: f64 = 20_000.0;
+const VXCLICK_GITHUB_URL: &str = "https://github.com/Vxiey/VxClick";
 
 struct SampleState {
     at: Instant,
@@ -283,6 +284,26 @@ fn stop_clicker(state: State<'_, EngineState>, diagnostics: State<'_, Diagnostic
     stop_clicker_inner(&state, &diagnostics);
 }
 
+fn is_allowed_external_url(url: &str) -> bool {
+    let Some(rest) = url.strip_prefix(VXCLICK_GITHUB_URL) else {
+        return false;
+    };
+    rest.is_empty() || rest.starts_with('/') || rest.starts_with('?') || rest.starts_with('#')
+}
+
+#[tauri::command]
+fn open_external_url(url: String) -> Result<(), String> {
+    let url = url.trim();
+    if !is_allowed_external_url(url) {
+        return Err("external URL is not an approved VxClick GitHub link".into());
+    }
+    std::process::Command::new("explorer.exe")
+        .arg(url)
+        .spawn()
+        .map(|_| ())
+        .map_err(|error| format!("failed to open external link: {error}"))
+}
+
 fn parse_positions(mode: &str, value: &str) -> Result<Vec<(i32, i32)>, String> {
     match mode.trim().to_ascii_lowercase().as_str() {
         "cursor" | "" => Ok(Vec::new()),
@@ -387,6 +408,7 @@ fn main() {
             engine_status,
             start_clicker,
             stop_clicker,
+            open_external_url,
             run_precision_benchmark,
             diagnostics_snapshot,
             diagnostics_client_log,
@@ -432,7 +454,7 @@ fn main() {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClickerRuntimeOptions, parse_positions};
+    use super::{ClickerRuntimeOptions, is_allowed_external_url, parse_positions};
 
     #[test]
     fn safe_runtime_options_have_single_click_burst() {
@@ -447,5 +469,17 @@ mod tests {
             vec![(10, 20), (30, 40)]
         );
         assert!(parse_positions("fixed", "10").is_err());
+    }
+
+    #[test]
+    fn external_links_are_limited_to_the_vxclick_github_repository() {
+        assert!(is_allowed_external_url("https://github.com/Vxiey/VxClick"));
+        assert!(is_allowed_external_url(
+            "https://github.com/Vxiey/VxClick/blob/main/TERMS.md"
+        ));
+        assert!(!is_allowed_external_url("https://example.com"));
+        assert!(!is_allowed_external_url(
+            "https://github.com/Vxiey/VxClick-malicious"
+        ));
     }
 }
