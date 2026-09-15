@@ -96,6 +96,7 @@ export function HotkeyCaptureInput({
   const [captureError, setCaptureError] = useState("");
   const requestIdRef = useRef<string | null>(null);
   const unlistenRef = useRef<UnlistenFn | null>(null);
+  const inputRef = useRef<HTMLInputElement | null>(null);
 
   const cleanupListener = () => {
     unlistenRef.current?.();
@@ -129,6 +130,7 @@ export function HotkeyCaptureInput({
 
   useEffect(() => {
     if (!capturing) return;
+    inputRef.current?.focus();
 
     const onKeyDown = (event: KeyboardEvent) => {
       if (!requestIdRef.current) return;
@@ -194,6 +196,7 @@ export function HotkeyCaptureInput({
     <div>
       <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) auto", gap: 7 }}>
         <input
+          ref={inputRef}
           className="input"
           list={list}
           value={capturing ? "Press a key, combo or mouse button…" : value}
