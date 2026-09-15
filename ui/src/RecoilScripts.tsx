@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   AlertTriangle,
   CheckCircle2,
@@ -11,6 +11,7 @@ import {
   ShieldCheck,
   ShieldOff,
   SlidersHorizontal,
+  Upload,
 } from "lucide-react";
 import {
   recoilApi,
@@ -20,6 +21,8 @@ import {
   type RecoilStep,
 } from "./api";
 import { Button, Card, Field, MetricCard, StatusPill, Toggle } from "./components";
+
+const MAX_RECOIL_IMPORT_BYTES = 1024 * 1024;
 
 const emptySnapshot: RecoilSnapshot = {
   document: {
@@ -36,6 +39,7 @@ const emptySnapshot: RecoilSnapshot = {
 };
 
 export function RecoilScripts() {
+  const uploadInputRef = useRef<HTMLInputElement | null>(null);
   const [snapshot, setSnapshot] = useState<RecoilSnapshot>(emptySnapshot);
   const [selectedPresetId, setSelectedPresetId] = useState("");
   const [draft, setDraft] = useState<RecoilPreset | null>(null);
@@ -44,6 +48,7 @@ export function RecoilScripts() {
   const [newGameProcess, setNewGameProcess] = useState("");
   const [confirmedAccountRisk, setConfirmedAccountRisk] = useState(false);
   const [confirmedThirdPartyRules, setConfirmedThirdPartyRules] = useState(false);
+  const [importMessage, setImportMessage] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
 
@@ -128,6 +133,7 @@ export function RecoilScripts() {
       const saved = await recoilApi.savePreset(activeGame.id, { ...draft, pattern });
       setDraft(saved);
       setPatternText(formatPattern(saved.pattern));
+      setImportMessage("");
       await refresh();
     } catch (nextError) {
       setError(String(nextError));
@@ -151,7 +157,7 @@ export function RecoilScripts() {
       horizontal: 1,
       rpm: 600,
       activation_mode: "ads-fire",
-      activation_hotkey: slot === 1 ? "F1" : "F2",
+      activation_hotkey: slot === 1 ? "F9" : "F10",
       pattern: [{ x: 0, y: 4 }],
     };
     try {
@@ -159,9 +165,38 @@ export function RecoilScripts() {
       setSelectedPresetId(id);
       setDraft(preset);
       setPatternText(formatPattern(preset.pattern));
+      setImportMessage("");
       await refresh();
     } catch (nextError) {
       setError(String(nextError));
+    }
+  };
+
+  const importPresetFile = async (file: File | null) => {
+    if (!file || !activeGame) return;
+    setBusy(true);
+    setImportMessage("");
+    setError("");
+    try {
+      const lowerName = file.name.toLowerCase();
+      if (!lowerName.endsWith(".json") && !lowerName.endsWith(".vxrecoil")) {
+        throw new Error("Select a .json or .vxrecoil recoil script file");
+      }
+      if (file.size > MAX_RECOIL_IMPORT_BYTES) {
+        throw new Error("Recoil script files cannot exceed 1 MiB");
+      }
+      const preset = parseImportedPreset(await file.text(), file.name, snapshot.document.active_slot);
+      const saved = await recoilApi.savePreset(activeGame.id, preset);
+      if (saved.slot !== snapshot.document.active_slot) await recoilApi.setSlot(saved.slot);
+      setSelectedPresetId(saved.id);
+      setDraft(saved);
+      setPatternText(formatPattern(saved.pattern));
+      setImportMessage(`Imported ${saved.name} into ${activeGame.name}.`);
+      await refresh();
+    } catch (nextError) {
+      setError(String(nextError));
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -210,7 +245,7 @@ export function RecoilScripts() {
       <div className="page-header">
         <div>
           <h1 className="page-title">Recoil Scripts</h1>
-          <div className="page-subtitle">Create and save multi-game recoil scripts with separate game, character/operator and weapon metadata.</div>
+          <div className="page-subtitle">Create, import and save data-only recoil scripts with separate game, character/operator and weapon metadata.</div>
         </div>
         <StatusPill status={snapshot.running ? "Running" : "Ready"} />
       </div>
@@ -313,10 +348,26 @@ export function RecoilScripts() {
 
       <div className="grid grid-2 section-gap">
         <Card>
-          <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
+          <div className="inline" style={{ justifyContent: "space-between", width: "100%", flexWrap: "wrap", alignItems: "flex-start" }}>
             <div><h2 className="card-title">Recoil scripts</h2><div className="card-copy">{snapshot.document.active_slot === 1 ? "Primary" : "Secondary"} scripts for {activeGame?.name ?? "the active game"}.</div></div>
-            <Button onClick={() => void addPreset()}><Plus size={14} /> New script</Button>
+            <div className="quick-actions" style={{ marginTop: 0 }}>
+              <Button disabled={busy || !activeGame} onClick={() => uploadInputRef.current?.click()}><Upload size={14} /> Upload script</Button>
+              <Button disabled={busy || !activeGame} onClick={() => void addPreset()}><Plus size={14} /> New script</Button>
+            </div>
           </div>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept=".json,.vxrecoil,application/json,text/plain"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.target.files?.[0] ?? null;
+              event.target.value = "";
+              void importPresetFile(file);
+            }}
+          />
+          <div className="card-copy section-gap">Imports are data-only JSON/VXRECOIL files. Imported IDs are regenerated so an upload cannot silently overwrite an existing script.</div>
+          {importMessage && <div className="card-copy" style={{ color: "var(--success)" }}>{importMessage}</div>}
           <div className="section-gap" style={{ display: "grid", gap: 8 }}>
             {slotPresets.map((preset) => (
               <button key={preset.id} className={`nav-button ${preset.id === selectedPresetId ? "active" : ""}`} onClick={() => selectPreset(preset.id)}>
@@ -353,7 +404,7 @@ export function RecoilScripts() {
               <Field label={`Horizontal · ${draft.horizontal.toFixed(2)}×`}><input className="range" type="range" min="0" max="10" step="0.05" value={draft.horizontal} onChange={(event) => setDraft({ ...draft, horizontal: Number(event.target.value) })} /></Field>
             </div>
             <div className="section-gap"><Field label="Pattern · X,Y per shot"><textarea className="input" style={{ minHeight: 120, resize: "vertical" }} value={patternText} onChange={(event) => setPatternText(event.target.value)} placeholder={"0,4\n0,5\n1,5\n-1,6"} /></Field></div>
-            <div className="inline section-gap" style={{ justifyContent: "space-between", width: "100%" }}>
+            <div className="inline section-gap" style={{ justifyContent: "space-between", width: "100%", flexWrap: "wrap" }}>
               <div className="inline"><Toggle value={draft.enabled} onChange={(enabled) => setDraft({ ...draft, enabled })} /><span className="card-copy">Script enabled</span></div>
               <Button variant="primary" disabled={busy} onClick={() => void savePreset()}><Save size={14} /> Save script</Button>
             </div>
@@ -382,6 +433,67 @@ function parsePattern(value: string): RecoilStep[] {
   if (!steps.length) throw new Error("Pattern must contain at least one X,Y row");
   if (steps.length > 512) throw new Error("Pattern supports at most 512 steps");
   return steps;
+}
+
+function parseImportedPreset(text: string, fileName: string, fallbackSlot: 1 | 2): RecoilPreset {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(text);
+  } catch {
+    throw new Error("Recoil script is not valid JSON");
+  }
+  const root = asRecord(parsed, "recoil script");
+  const source = root.preset === undefined ? root : asRecord(root.preset, "preset");
+  const patternSource = source.pattern;
+  if (!Array.isArray(patternSource) || patternSource.length === 0 || patternSource.length > 512) {
+    throw new Error("Imported recoil pattern must contain 1-512 steps");
+  }
+  const pattern = patternSource.map((value, index) => {
+    let x: number;
+    let y: number;
+    if (Array.isArray(value)) {
+      x = Number(value[0]);
+      y = Number(value[1]);
+    } else {
+      const point = asRecord(value, `pattern step ${index + 1}`);
+      x = Number(point.x);
+      y = Number(point.y);
+    }
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      throw new Error(`Invalid X/Y value in pattern step ${index + 1}`);
+    }
+    return { x: Math.round(x), y: Math.round(y) };
+  });
+
+  const slotValue = Number(source.slot);
+  const slot: 1 | 2 = slotValue === 1 || slotValue === 2 ? slotValue : fallbackSlot;
+  const activation = typeof source.activation_mode === "string" ? source.activation_mode : "ads-fire";
+  const activationMode: RecoilPreset["activation_mode"] = activation === "fire" || activation === "always" ? activation : "ads-fire";
+  const fallbackName = fileName.replace(/\.(?:json|vxrecoil)$/i, "").trim() || "Imported Recoil Script";
+
+  return {
+    id: `import-${Date.now()}`,
+    name: typeof source.name === "string" && source.name.trim() ? source.name.trim() : fallbackName,
+    character_name: typeof source.character_name === "string" ? source.character_name.trim() : "",
+    weapon_name: typeof source.weapon_name === "string" && source.weapon_name.trim() ? source.weapon_name.trim() : "Custom",
+    slot,
+    enabled: typeof source.enabled === "boolean" ? source.enabled : true,
+    vertical: source.vertical === undefined ? 1 : Number(source.vertical),
+    horizontal: source.horizontal === undefined ? 1 : Number(source.horizontal),
+    rpm: source.rpm === undefined ? 600 : Number(source.rpm),
+    activation_mode: activationMode,
+    activation_hotkey: typeof source.activation_hotkey === "string" && source.activation_hotkey.trim()
+      ? source.activation_hotkey.trim()
+      : slot === 1 ? "F9" : "F10",
+    pattern,
+  };
+}
+
+function asRecord(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be a JSON object`);
+  }
+  return value as Record<string, unknown>;
 }
 
 function formatPattern(pattern: RecoilStep[]) {
