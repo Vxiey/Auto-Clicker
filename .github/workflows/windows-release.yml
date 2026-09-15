@@ -68,13 +68,13 @@ jobs:
           compression-level: 6
           retention-days: 30
 
-      - name: Publish VxClick 1.0.2 GitHub Release
-        if: "${{ github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: VxClick 1.0.2') }}"
+      - name: Publish VxClick 1.0.3 GitHub Release
+        if: "${{ github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'release: VxClick 1.0.3') }}"
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $tag = "v1.0.2"
+          $tag = "v1.0.3"
           $releaseSha = $env:GITHUB_SHA
 
           git config user.name "github-actions[bot]"
@@ -84,9 +84,9 @@ jobs:
 
           gh release view $tag *> $null
           if ($LASTEXITCODE -eq 0) {
-            gh release edit $tag --target $releaseSha --title "VxClick 1.0.2" --notes-file "docs/releases/v1.0.2.md"
+            gh release edit $tag --target $releaseSha --title "VxClick 1.0.3" --notes-file "docs/releases/v1.0.3.md"
           } else {
-            gh release create $tag --target $releaseSha --title "VxClick 1.0.2" --notes-file "docs/releases/v1.0.2.md"
+            gh release create $tag --target $releaseSha --title "VxClick 1.0.3" --notes-file "docs/releases/v1.0.3.md"
           }
 
           Get-ChildItem -Path artifacts -Recurse -File | ForEach-Object {
