@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import {
   CircleStop,
   Clock3,
@@ -102,6 +103,7 @@ export function MacroStudio() {
   const [macroType, setMacroType] = useState<MacroType>("no-repeat");
   const [events, setEvents] = useState<MacroEvent[]>(initialEvents);
   const [recording, setRecording] = useState(false);
+  const [recordStatus, setRecordStatus] = useState("F1 starts global recording · F2 stops and saves");
   const [recordDelays, setRecordDelays] = useState(true);
   const [standardDelay, setStandardDelay] = useState(false);
   const [standardDelayMs, setStandardDelayMs] = useState(50);
@@ -134,7 +136,49 @@ export function MacroStudio() {
   };
 
   useEffect(() => {
+    let disposed = false;
+    const unlisteners: UnlistenFn[] = [];
     void refresh();
+    const timer = window.setInterval(() => void refresh(), 500);
+
+    void (async () => {
+      try {
+        const stateUnlisten = await listen<boolean>("macro-recording-state", (event) => {
+          if (disposed) return;
+          const active = Boolean(event.payload);
+          setRecording(active);
+          setRecordStatus(active ? "Recording globally · press F2 to stop and save" : "Recording stopped");
+        });
+        if (disposed) stateUnlisten();
+        else unlisteners.push(stateUnlisten);
+
+        const recordedUnlisten = await listen<StoredMacro>("macro-recorded", (event) => {
+          if (disposed) return;
+          const saved = event.payload;
+          setRecording(false);
+          setMacroId(saved.id);
+          setName(saved.name);
+          setTrigger(saved.trigger);
+          setMacroType(saved.macroType);
+          setRepeatDelayMs(saved.repeatDelayMs);
+          setSpeed(saved.speed);
+          setEvents(saved.events.map(fromStoredEvent));
+          setRecordStatus(`Recorded and saved · ${saved.events.filter((item) => item.type !== "delay").length} actions`);
+          setError("");
+          void refresh();
+        });
+        if (disposed) recordedUnlisten();
+        else unlisteners.push(recordedUnlisten);
+      } catch {
+        // Browser preview has no Tauri event bridge.
+      }
+    })();
+
+    return () => {
+      disposed = true;
+      window.clearInterval(timer);
+      for (const unlisten of unlisteners) unlisten();
+    };
   }, []);
 
   const loadMacro = (id: string) => {
@@ -213,10 +257,16 @@ export function MacroStudio() {
         const lane = macroType === "sequence" ? "on-press" : "main";
         await macroApi.startRecording(recordDelays, standardDelay ? standardDelayMs : null, lane);
         setRecording(true);
+        setRecordStatus("Recording globally · use the button or F2 to stop");
       } else {
         const captured = await macroApi.stopRecording();
         setRecording(false);
-        if (captured.length) setEvents(captured.map(fromStoredEvent));
+        if (captured.length) {
+          setEvents(captured.map(fromStoredEvent));
+          setRecordStatus(`Recording stopped · ${captured.filter((item) => item.type !== "delay").length} actions captured`);
+        } else {
+          setRecordStatus("Recording stopped · no actions captured");
+        }
       }
       setError("");
     } catch (reason) {
@@ -394,7 +444,7 @@ export function MacroStudio() {
       <div className="page-header macro-page-header">
         <div>
           <h1 className="page-title">Macro Studio</h1>
-          <div className="page-subtitle">Native global recording, persistent macros and QPC precision playback.</div>
+          <div className="page-subtitle">Native global recording, persistent macros and QPC precision playback. F1 starts recording and F2 stops/saves it.</div>
         </div>
         <div className="macro-summary">
           <span>{events.filter((event) => event.type !== "delay").length} actions</span>
@@ -404,8 +454,14 @@ export function MacroStudio() {
       </div>
 
       {error && <Card><div style={{ color: "var(--danger)", fontSize: 12 }}>{error}</div></Card>}
+      <Card className="section-gap">
+        <div className="inline" style={{ justifyContent: "space-between", width: "100%", flexWrap: "wrap" }}>
+          <div className="card-copy">{recordStatus}</div>
+          <span className={`status-pill ${recording ? "status-recording" : "status-ready"}`}>{recording ? "F2 stops" : "F1 start · F2 stop"}</span>
+        </div>
+      </Card>
 
-      <div className="macro-layout">
+      <div className="macro-layout section-gap">
         <Card className="macro-type-panel">
           <div className="macro-panel-title">Macro type</div>
           <div className="macro-panel-copy">Choose how the assigned global trigger controls playback.</div>
@@ -485,7 +541,7 @@ export function MacroStudio() {
       </div>
 
       <Card className="section-gap">
-        <div className="inline" style={{ justifyContent: "space-between", width: "100%", alignItems: "flex-start" }}>
+        <div className="inline" style={{ justifyContent: "space-between", width: "100%", alignItems: "flex-start", flexWrap: "wrap" }}>
           <div><div className="macro-panel-title"><Code2 size={15} style={{ display: "inline", marginRight: 7 }} />Lua script library</div><div className="macro-panel-copy">Create, upload, rename and save sandboxed Lua scripts. Scripts compile into the same native InputAction precision player.</div></div>
           <div className="quick-actions" style={{ marginTop: 0 }}>
             <Button onClick={newLua}><Plus size={14} /> New</Button>
@@ -507,7 +563,7 @@ export function MacroStudio() {
           <Field label="Script name"><input className="input" value={luaName} maxLength={96} onChange={(event) => setLuaName(event.target.value)} /></Field>
         </div>
         <textarea className="input section-gap" style={{ width: "100%", minHeight: 220, resize: "vertical", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace" }} value={luaScript} onChange={(event) => setLuaScript(event.target.value)} spellCheck={false} />
-        <div className="inline" style={{ justifyContent: "space-between", width: "100%" }}>
+        <div className="inline" style={{ justifyContent: "space-between", width: "100%", flexWrap: "wrap" }}>
           <div className="card-copy">Stored locally in VxClick · max 256 scripts · max 1 MiB per script.</div>
           <div className="quick-actions" style={{ marginTop: 0 }}><Button onClick={() => void validateLua()}>Validate</Button><Button variant="primary" onClick={() => void runLua()}><Play size={14} /> Run Lua</Button><Button onClick={() => void macroApi.stop()}><CircleStop size={14} /> Stop</Button></div>
         </div>
