@@ -16,6 +16,37 @@ import { APP_VERSION } from "./version";
 
 const CHANGELOG = [
   {
+    version: "1.0.2",
+    date: "15.09.2026",
+    sections: [
+      {
+        title: "NEW",
+        items: [
+          "Dedicated Keybinds tab for clicker, emergency stop, recorder, macro and remap bindings.",
+          "Keybind conflict detection including reserved F1/F2 macro-recorder bindings.",
+          "Per-profile Process List with individual process removal, executable addition and one-click foreground-process binding.",
+          "Recoil Script upload/import for .json and .vxrecoil preset files.",
+        ],
+      },
+      {
+        title: "CHANGED",
+        items: [
+          "Profiles show bound applications as individual removable entries instead of only comma-separated process text.",
+          "Imported recoil presets receive a new local ID before backend validation and saving.",
+          "Layouts wrap more cleanly on smaller windows and higher Windows display scaling.",
+        ],
+      },
+      {
+        title: "FIXED",
+        items: [
+          "Macro Studio now follows native recorder state so F1 start and F2 stop are visible immediately.",
+          "Completed F1/F2 recordings refresh the saved macro list and surface the saved draft in the UI.",
+          "Fixed content clipping that could hide lower controls or prevent vertical scrolling at some DPI/window sizes.",
+        ],
+      },
+    ],
+  },
+  {
     version: "1.0.1",
     date: "15.09.2026",
     sections: [
@@ -133,7 +164,7 @@ const CHANGELOG = [
       {
         title: "FIXED",
         items: [
-          "Chord mappings fire on the activation edge instead of repeating on every keyboard repeat event.",
+          "Chord mappings fire on their activation edge instead of repeating on every keyboard repeat event.",
         ],
       },
     ],
