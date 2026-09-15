@@ -398,8 +398,10 @@ fn main() {
             app.manage(diagnostics.clone());
 
             if let Some(tray) = app.tray_by_id("main") {
-                let open_item = MenuItem::with_id(app, TRAY_OPEN_ID, "Open VxClick", true, None::<&str>)?;
-                let exit_item = MenuItem::with_id(app, TRAY_EXIT_ID, "Exit VxClick", true, None::<&str>)?;
+                let open_item =
+                    MenuItem::with_id(app, TRAY_OPEN_ID, "Open VxClick", true, None::<&str>)?;
+                let exit_item =
+                    MenuItem::with_id(app, TRAY_EXIT_ID, "Exit VxClick", true, None::<&str>)?;
                 let menu = Menu::with_items(app, &[&open_item, &exit_item])?;
                 tray.set_menu(Some(menu))?;
             }
