@@ -155,7 +155,8 @@ impl HotkeyCaptureController {
                 CaptureOutcome::Capturing
             }
             CapturedInputKind::MouseDown(button) => {
-                let Some(binding) = session.modifiers.binding(Some(mouse_button_token(button))) else {
+                let Some(binding) = session.modifiers.binding(Some(mouse_button_token(button)))
+                else {
                     return CaptureOutcome::Capturing;
                 };
                 complete(&mut session, Some(binding))
