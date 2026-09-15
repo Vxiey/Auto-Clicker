@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import {
   AlertTriangle,
   ChevronDown,
@@ -13,6 +14,9 @@ import {
 import { updaterApi, type UpdateInfo } from "./api";
 import { Button, Card } from "./components";
 import { APP_VERSION } from "./version";
+
+const TERMS_URL = "https://github.com/Vxiey/VxClick/blob/main/TERMS.md";
+const GITHUB_URL = "https://github.com/Vxiey/VxClick";
 
 const CHANGELOG = [
   {
@@ -253,6 +257,15 @@ export function UpdatePanel() {
     }
   };
 
+  const openExternal = async (url: string) => {
+    try {
+      await invoke<void>("open_external_url", { url });
+      setMessage("");
+    } catch (error) {
+      setMessage(`Could not open link: ${String(error)}`);
+    }
+  };
+
   const installUpdate = async () => {
     if (!info?.available || !info.full_release) return;
     setInstalling(true);
@@ -278,12 +291,12 @@ export function UpdatePanel() {
           <div className="card-copy">Version history, project links, legal notices and verified GitHub updates.</div>
         </div>
         <div className="quick-actions" style={{ marginTop: 0 }}>
-          <a className="button" href="https://github.com/Vxiey/VxClick/blob/main/TERMS.md" target="_blank" rel="noreferrer">
+          <Button onClick={() => void openExternal(TERMS_URL)}>
             <FileText size={14} /> Terms of Service
-          </a>
-          <a className="button" href="https://github.com/Vxiey/VxClick" target="_blank" rel="noreferrer">
+          </Button>
+          <Button onClick={() => void openExternal(GITHUB_URL)}>
             <Code2 size={14} /> GitHub
-          </a>
+          </Button>
           <Button disabled={checking || installing} onClick={() => void check()}>
             <RefreshCw size={14} /> Check updates
           </Button>
