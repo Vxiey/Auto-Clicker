@@ -1,7 +1,3 @@
-<p align="center">
-  <img src="assets/icon.png" width="96" alt="VxClick icon" />
-</p>
-
 <h1 align="center">VxClick</h1>
 
 <p align="center">
